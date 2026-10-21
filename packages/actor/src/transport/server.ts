@@ -91,6 +91,13 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
 
   const server = createServer();
 
+  // A browser tab closing mid-frame can surface as ECONNRESET on the socket.
+  // Without these listeners Node treats it as an unhandled 'error' event and
+  // kills the whole Actor process. A local bridge must survive client resets.
+  server.on("clientError", (_error, socket) => {
+    socket.destroy();
+  });
+
   // Non-upgrade requests (plain HTTP) get a short informational response so
   // they don't hang; this bridge speaks WebSocket only.
   server.on("request", (_request, response) => {
@@ -102,6 +109,12 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
   // the request callback), which is the correct way to hand the socket over to
   // a custom protocol handler under node:http.
   server.on("upgrade", (request: IncomingMessage, socket: Socket) => {
+    // Never let a client-side reset crash the process. The socket is still
+    // usable for cleanup; destroy() is idempotent.
+    socket.on("error", () => {
+      socket.destroy();
+    });
+
     const handshake = evaluateHandshake(
       {
         method: request.method,

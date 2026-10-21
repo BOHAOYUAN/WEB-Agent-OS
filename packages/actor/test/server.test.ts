@@ -51,6 +51,46 @@ async function upgradeStatus(port: number, token: string, origin?: string): Prom
   });
 }
 
+/**
+ * Complete an upgrade, then reset the TCP connection (RST) without a clean
+ * WebSocket close. Regression for the ECONNRESET crash that killed the Actor.
+ */
+async function resetAfterUpgrade(port: number, token: string): Promise<void> {
+  const net = await import("node:net");
+  return new Promise<void>((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => {
+      socket.write(
+        "GET /?token=" + encodeURIComponent(token) + " HTTP/1.1\r\n" +
+        "Host: 127.0.0.1\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+        "Sec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("reset handshake timeout"));
+    }, 3000);
+    socket.once("data", (chunk) => {
+      clearTimeout(timer);
+      if (!chunk.toString("utf8").includes("101")) {
+        socket.destroy();
+        reject(new Error("expected 101 before reset"));
+        return;
+      }
+      socket.resetAndDestroy?.();
+      socket.destroy();
+      resolve();
+    });
+    socket.on("error", () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve();
+    });
+  });
+}
+
 describe("Actor server — upgrade (token-first + Origin-secondary)", () => {
   it("accepts no Origin with a correct token (101)", async () => {
     const token = generateToken();
@@ -87,6 +127,14 @@ describe("Actor server — upgrade (token-first + Origin-secondary)", () => {
     server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
     expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(101);
     expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(101);
+  });
+
+  it("survives a client TCP reset after upgrade", async () => {
+    const token = generateToken();
+    server = await createActorServer({ allowedOrigins: [], token, port: 0 });
+    await resetAfterUpgrade(server.port, token);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(await upgradeStatus(server.port, token)).toBe(101);
   });
 });
 
