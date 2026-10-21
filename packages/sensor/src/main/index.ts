@@ -23,7 +23,7 @@ function boot(): void {
   const nonce = document.documentElement?.dataset.webosNonce ?? "";
   if (nonce) {
     installReverseChannel({ nonce }, {
-      onArm: (version, prompt) => injector.arm(version, prompt),
+      onArm: (version, context) => injector.arm(version, context),
       onDisarm: () => injector.disarm(),
     });
   }

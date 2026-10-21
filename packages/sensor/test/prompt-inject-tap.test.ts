@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installXhrTap } from "../src/main/taps/xhr.js";
 import type { TapStart } from "../src/main/taps/types.js";
 
@@ -37,7 +37,12 @@ afterEach(() => {
   uninstall = null;
 });
 
-function setup(injector?: { consume: () => { version: number; prompt: string } | null }) {
+interface FakeInjector {
+  peek: () => { version: number; context: { persona?: string; memory?: string } } | null;
+  consume: (version: number) => void;
+}
+
+function setup(injector?: FakeInjector) {
   const starts: TapStart[] = [];
   uninstall = installXhrTap({
     XHRClass: RecordingXhr as unknown as typeof XMLHttpRequest,
@@ -53,8 +58,12 @@ function setup(injector?: { consume: () => { version: number; prompt: string } |
 }
 
 describe("installXhrTap injection", () => {
-  it("rewrites the body when an injection is armed", () => {
-    const injector = { consume: () => ({ version: 1, prompt: "You are a coder." }) };
+  it("rewrites the body and consumes when an injection is armed", () => {
+    const consume = vi.fn();
+    const injector: FakeInjector = {
+      peek: () => ({ version: 1, context: { persona: "You are a coder." } }),
+      consume,
+    };
     const { starts } = setup(injector);
     const xhr = new RecordingXhr();
     xhr.open("POST", "/api/v0/chat/completion");
@@ -63,24 +72,30 @@ describe("installXhrTap injection", () => {
     const parsed = JSON.parse(xhr.sentBody as string) as { messages: Array<Record<string, unknown>> };
     expect(parsed.messages.at(-1)).toEqual({ role: "system", content: "You are a coder." });
     expect(starts[0]?.injectionVersion).toBe(1);
+    expect(consume).toHaveBeenCalledWith(1);
   });
 
-  it("leaves the body unchanged when no injection is armed", () => {
-    const injector = { consume: () => null };
+  it("does not consume when injection fails", () => {
+    const consume = vi.fn();
+    const injector: FakeInjector = {
+      peek: () => ({ version: 2, context: { persona: "You are a coder." } }),
+      consume,
+    };
     const { starts } = setup(injector);
     const xhr = new RecordingXhr();
-    const body = JSON.stringify({ messages: [{ role: "user", content: "hi" }] });
+    const body = new URLSearchParams({ q: "x" });
     xhr.open("POST", "/api/v0/chat/completion");
     xhr.send(body);
     expect(xhr.sentBody).toBe(body);
     expect(starts[0]?.injectionVersion).toBeUndefined();
+    expect(consume).not.toHaveBeenCalled();
   });
 
-  it("leaves non-JSON bodies unchanged and does not ack injection", () => {
-    const injector = { consume: () => ({ version: 2, prompt: "You are a coder." }) };
+  it("leaves the body unchanged when no injection is armed", () => {
+    const injector: FakeInjector = { peek: () => null, consume: () => {} };
     const { starts } = setup(injector);
     const xhr = new RecordingXhr();
-    const body = new URLSearchParams({ q: "x" });
+    const body = JSON.stringify({ messages: [{ role: "user", content: "hi" }] });
     xhr.open("POST", "/api/v0/chat/completion");
     xhr.send(body);
     expect(xhr.sentBody).toBe(body);

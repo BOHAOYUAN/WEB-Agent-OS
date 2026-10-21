@@ -1,6 +1,6 @@
 import { CHANNELS } from "@webos/shared";
 import type { RouterDecision } from "@webos/router";
-import type { SensorEvent } from "@webos/shared";
+import type { SensorEvent, SystemContext } from "@webos/shared";
 import { RuleRouter } from "@webos/router";
 
 /**
@@ -8,18 +8,21 @@ import { RuleRouter } from "@webos/router";
  * instance and the injection enable flag, feeds sensor events to the Router,
  * and translates "send-prompt" decisions into arm/disarm messages pushed to the
  * content bridge. This is the ONLY layer that couples Router to chrome APIs.
+ *
+ * The Router only ever arms/disarms the PERSONA slice of the system context;
+ * version allocation lives in the bridge's InjectRelay, so the host no longer
+ * owns a sequence number.
  */
 
 interface RouterHostOptions {
   enabled?: boolean;
-  sendArm: (tabId: number, pageSessionId: string, version: number, prompt: string) => void;
+  sendArm: (tabId: number, pageSessionId: string, context: SystemContext) => void;
   sendDisarm: (tabId: number, pageSessionId: string) => void;
 }
 
 export class RouterHost {
   private readonly router: RuleRouter;
   private enabled: boolean;
-  private injectSeq = 0;
 
   constructor(private readonly options: RouterHostOptions) {
     this.enabled = options.enabled ?? false;
@@ -43,8 +46,7 @@ export class RouterHost {
 
   private applyDecision(decision: RouterDecision, tabId: number, pageSessionId: string): void {
     if (decision.kind === "send-prompt") {
-      this.injectSeq += 1;
-      this.options.sendArm(tabId, pageSessionId, this.injectSeq, decision.prompt);
+      this.options.sendArm(tabId, pageSessionId, { persona: decision.prompt });
     } else if (decision.kind === "stop") {
       this.options.sendDisarm(tabId, pageSessionId);
     }

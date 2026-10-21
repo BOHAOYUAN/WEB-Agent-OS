@@ -42,11 +42,12 @@ export function installXhrTap(options: TapInstallOptions & { XHRClass?: typeof X
         const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
         const url = new URL(state.url, base);
         if (options.match(url)) {
-          const pending = options.injector?.consume();
+          const pending = options.injector?.peek();
           if (pending) {
-            const { rewritten, injected } = injectSystemPrompt(args[0], pending.prompt);
+            const { rewritten, injected } = injectSystemPrompt(args[0], pending.context);
             if (injected) {
               injectionVersion = pending.version;
+              options.injector?.consume(pending.version);
               finalArgs = args.slice();
               finalArgs[0] = rewritten;
             }

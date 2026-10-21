@@ -1,4 +1,5 @@
 import type { SensorErrorCode, SensorEvent, Transport } from "./events.js";
+import type { SystemContext } from "./memory.js";
 
 export type MainToBridgeMessage =
   | { kind: "webos/sensor.ready"; v: 1; pageSessionId: string }
@@ -41,7 +42,7 @@ export interface MainEnvelope {
 
 /** Reverse channel: messages pushed from the bridge (ISOLATED) to main (MAIN). */
 export type BridgeToMainMessage =
-  | { kind: "webos/inject.arm"; v: 1; version: number; prompt: string }
+  | { kind: "webos/inject.arm"; v: 1; version: number; context: SystemContext }
   | { kind: "webos/inject.disarm"; v: 1 };
 
 export interface BridgeToMainEnvelope {
@@ -77,7 +78,9 @@ export type RuntimeMessage =
   | { kind: "webos/capture.dump.request"; tabId: number }
   | { kind: "webos/ui.clear" }
   | { kind: "webos/router.set-enabled"; enabled: boolean }
-  | { kind: "webos/router.get-enabled" };
+  | { kind: "webos/router.get-enabled" }
+  | { kind: "webos/memory.arm"; tabId: number; text: string }
+  | { kind: "webos/memory.disarm"; tabId: number };
 
 export interface CaptureDumpResponse {
   kind: "webos/capture.dump.result";
@@ -88,8 +91,8 @@ export interface CaptureDumpResponse {
 /** Messages sent from the service worker to a content script. */
 export type ContentMessage =
   | { kind: "webos/capture.dump" }
-  | { kind: "webos/inject.arm"; v: 1; pageSessionId: string; version: number; prompt: string }
-  | { kind: "webos/inject.disarm"; v: 1; pageSessionId: string };
+  | { kind: "webos/inject.arm"; v: 1; pageSessionId: string; context: SystemContext }
+  | { kind: "webos/inject.disarm"; v: 1; pageSessionId: string; target: "persona" | "memory" | "all" };
 
 export interface ContentResponse {
   kind: "webos/capture.dump.result";

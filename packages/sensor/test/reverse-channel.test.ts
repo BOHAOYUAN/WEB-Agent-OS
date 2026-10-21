@@ -41,10 +41,15 @@ function setup() {
 }
 
 describe("installReverseChannel", () => {
-  it("dispatches a valid arm", () => {
+  it("dispatches a valid arm with a merged context", () => {
     const { scope, onArm, onDisarm } = setup();
-    fire(scope, { source: "webos.sensor.bridge", v: 1, nonce: "nonce-1", message: { kind: "webos/inject.arm", v: 1, version: 7, prompt: "p" } });
-    expect(onArm).toHaveBeenCalledWith(7, "p");
+    fire(scope, {
+      source: "webos.sensor.bridge",
+      v: 1,
+      nonce: "nonce-1",
+      message: { kind: "webos/inject.arm", v: 1, version: 7, context: { persona: "p", memory: "m" } },
+    });
+    expect(onArm).toHaveBeenCalledWith(7, { persona: "p", memory: "m" });
     expect(onDisarm).not.toHaveBeenCalled();
   });
 
@@ -57,23 +62,33 @@ describe("installReverseChannel", () => {
 
   it("rejects a wrong nonce", () => {
     const { scope, onArm } = setup();
-    fire(scope, { source: "webos.sensor.bridge", v: 1, nonce: "wrong", message: { kind: "webos/inject.arm", v: 1, version: 1, prompt: "p" } });
+    fire(scope, {
+      source: "webos.sensor.bridge",
+      v: 1,
+      nonce: "wrong",
+      message: { kind: "webos/inject.arm", v: 1, version: 1, context: { persona: "p" } },
+    });
     expect(onArm).not.toHaveBeenCalled();
   });
 
   it("rejects a wrong source", () => {
     const { scope, onArm } = setup();
-    fire(scope, { source: "webos.sensor.main", v: 1, nonce: "nonce-1", message: { kind: "webos/inject.arm", v: 1, version: 1, prompt: "p" } });
+    fire(scope, {
+      source: "webos.sensor.main",
+      v: 1,
+      nonce: "nonce-1",
+      message: { kind: "webos/inject.arm", v: 1, version: 1, context: { persona: "p" } },
+    });
     expect(onArm).not.toHaveBeenCalled();
   });
 
-  it("rejects an arm with an oversized prompt", () => {
+  it("rejects an arm with an invalid context", () => {
     const { scope, onArm } = setup();
     fire(scope, {
       source: "webos.sensor.bridge",
       v: 1,
       nonce: "nonce-1",
-      message: { kind: "webos/inject.arm", v: 1, version: 1, prompt: "x".repeat(5000) },
+      message: { kind: "webos/inject.arm", v: 1, version: 1, context: "not-an-object" },
     });
     expect(onArm).not.toHaveBeenCalled();
   });

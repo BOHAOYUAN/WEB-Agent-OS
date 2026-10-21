@@ -1,8 +1,8 @@
 import { isBridgeToMainEnvelope, isInjectArmMessage } from "@webos/shared";
-import type { BridgeToMainMessage } from "@webos/shared";
+import type { BridgeToMainMessage, SystemContext } from "@webos/shared";
 
 export interface ReverseChannelHandlers {
-  onArm(version: number, prompt: string): void;
+  onArm(version: number, context: SystemContext): void;
   onDisarm(): void;
 }
 
@@ -38,7 +38,7 @@ export function installReverseChannel(options: ReverseChannelOptions, handlers: 
       const message = event.data.message as BridgeToMainMessage;
       if (!isInjectArmMessage(message)) return;
       if (message.kind === "webos/inject.arm") {
-        handlers.onArm(message.version, message.prompt);
+        handlers.onArm(message.version, message.context);
       } else {
         handlers.onDisarm();
       }

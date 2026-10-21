@@ -1,6 +1,7 @@
 import { LIMITS } from "../constants.js";
 import type { SensorEvent } from "../types/events.js";
 import type { BridgeToMainEnvelope, BridgeToMainMessage, MainEnvelope, SensorBatch } from "../types/messages.js";
+import { isSystemContext } from "../types/memory.js";
 import { ACTOR_LIMITS, ACTOR_PROTOCOL_VERSION } from "../types/actor.js";
 import type { ActorCommand } from "../types/actor.js";
 
@@ -94,9 +95,7 @@ export function isInjectArmMessage(value: unknown): value is BridgeToMainMessage
       value.v === 1 &&
       typeof value.version === "number" &&
       Number.isInteger(value.version) &&
-      typeof value.prompt === "string" &&
-      value.prompt.length > 0 &&
-      value.prompt.length <= LIMITS.maxInjectPromptChars
+      isSystemContext(value.context)
     );
   }
   if (value.kind === "webos/inject.disarm") {

@@ -1,10 +1,12 @@
 import { LIMITS } from "@webos/shared";
-import type { BridgeToMainEnvelope, BridgeToMainMessage } from "@webos/shared";
+import type { BridgeToMainEnvelope, BridgeToMainMessage, SystemContext } from "@webos/shared";
 
 export interface PendingInjection {
   version: number;
-  prompt: string;
+  context: SystemContext;
 }
+
+export type DisarmTarget = "persona" | "memory" | "all";
 
 export interface InjectRelayOptions {
   nonce: string;
@@ -14,13 +16,15 @@ export interface InjectRelayOptions {
 }
 
 /**
- * Bridge-side holder for a pending persona injection. It is the authoritative
- * store (page-level lifetime, survives service-worker suspension), and pushes
- * arm/disarm into MAIN world via postMessage.
+ * Bridge-side holder for the pending system-context injection. It is the
+ * authoritative store (page-level lifetime, survives service-worker
+ * suspension), owns the version sequence, merges persona + memory into ONE
+ * context, and pushes arm/disarm into MAIN world via postMessage.
  */
 export class InjectRelay {
   private pending: PendingInjection | null = null;
   private expiresAt = 0;
+  private seq = 0;
   private readonly nonce: string;
   private readonly post: (envelope: BridgeToMainEnvelope) => void;
   private readonly now: () => number;
@@ -40,20 +44,46 @@ export class InjectRelay {
       });
   }
 
-  arm(version: number, prompt: string): void {
-    this.pending = { version, prompt };
+  /** Arm/merge a partial context. Provided fields overwrite, missing fields keep their current value. */
+  arm(partial: SystemContext): void {
+    const context: SystemContext = { ...this.pending?.context, ...partial };
+    if (context.persona === undefined) delete context.persona;
+    if (context.memory === undefined) delete context.memory;
+    if (!context.persona && !context.memory) return;
+
+    this.pending = { version: ++this.seq, context };
     this.expiresAt = this.now() + LIMITS.injectArmTtlMs;
-    this.push({ kind: "webos/inject.arm", v: 1, version, prompt });
+    this.push({ kind: "webos/inject.arm", v: 1, version: this.pending.version, context });
     this.armTtl();
   }
 
-  disarm(): void {
-    this.pending = null;
-    this.clearTtl();
-    this.push({ kind: "webos/inject.disarm", v: 1 });
+  /** Remove one field. If nothing remains, fully disarm; otherwise re-push the reduced context. */
+  disarm(target: DisarmTarget): void {
+    if (!this.pending) return;
+
+    if (target === "all") {
+      this.pending = null;
+      this.clearTtl();
+      this.push({ kind: "webos/inject.disarm", v: 1 });
+      return;
+    }
+
+    const context: SystemContext = { ...this.pending.context };
+    delete context[target];
+    if (!context.persona && !context.memory) {
+      this.pending = null;
+      this.clearTtl();
+      this.push({ kind: "webos/inject.disarm", v: 1 });
+      return;
+    }
+
+    this.pending = { version: ++this.seq, context };
+    this.expiresAt = this.now() + LIMITS.injectArmTtlMs;
+    this.push({ kind: "webos/inject.arm", v: 1, version: this.pending.version, context });
+    this.armTtl();
   }
 
-  /** Called when main reports it consumed (or attempted) an injection. */
+  /** Called when main reports it consumed an injection. */
   ack(version: number): void {
     if (this.pending?.version === version) {
       this.pending = null;
@@ -65,10 +95,10 @@ export class InjectRelay {
   rearm(): void {
     if (!this.pending) return;
     if (this.now() >= this.expiresAt) {
-      this.disarm();
+      this.disarm("all");
       return;
     }
-    this.push({ kind: "webos/inject.arm", v: 1, version: this.pending.version, prompt: this.pending.prompt });
+    this.push({ kind: "webos/inject.arm", v: 1, version: this.pending.version, context: this.pending.context });
   }
 
   get pendingInjection(): PendingInjection | null {
@@ -84,7 +114,7 @@ export class InjectRelay {
     this.clearTtl();
     this.ttlTimer = setTimeout(() => {
       this.ttlTimer = null;
-      if (this.pending && this.now() >= this.expiresAt) this.disarm();
+      if (this.pending && this.now() >= this.expiresAt) this.disarm("all");
     }, LIMITS.injectArmTtlMs);
   }
 

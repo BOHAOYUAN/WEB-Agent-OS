@@ -1,9 +1,11 @@
-import type { SensorErrorCode, Transport } from "@webos/shared";
+import type { SensorErrorCode, SystemContext, Transport } from "@webos/shared";
 
-/** Consumable source of a pending persona injection (armed by the Router). */
+/** Consumable source of a pending system-context injection (armed by the bridge). */
 export interface PromptInjector {
-  /** Atomically take the pending injection, or null if none is armed. */
-  consume(): { version: number; prompt: string } | null;
+  /** Read the pending injection without clearing it. */
+  peek(): { version: number; context: SystemContext } | null;
+  /** Clear the pending injection only if its version still matches. */
+  consume(version: number): void;
 }
 
 export interface TapStart {

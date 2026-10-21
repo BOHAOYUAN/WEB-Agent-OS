@@ -1,4 +1,4 @@
-import { LIMITS, RingBuffer, isMainEnvelope } from "@webos/shared";
+import { LIMITS, RingBuffer, isMainEnvelope, isSystemContext } from "@webos/shared";
 import type { BridgeDump, MainToBridgeMessage, RawFrame, SensorEvent } from "@webos/shared";
 import { SensorBadge } from "./badge.js";
 import { SensorSender } from "./sender.js";
@@ -139,18 +139,18 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   }
 
   if (kind === "webos/inject.arm") {
-    const arm = message as { pageSessionId?: string; version?: unknown; prompt?: unknown };
+    const arm = message as { pageSessionId?: string; context?: unknown };
     if (arm.pageSessionId !== pageSessionId) return false;
-    if (typeof arm.version !== "number" || !Number.isInteger(arm.version)) return false;
-    if (typeof arm.prompt !== "string" || arm.prompt.length === 0) return false;
-    relay.arm(arm.version, arm.prompt);
+    if (!isSystemContext(arm.context)) return false;
+    relay.arm(arm.context);
     return false;
   }
 
   if (kind === "webos/inject.disarm") {
-    const disarm = message as { pageSessionId?: string };
+    const disarm = message as { pageSessionId?: string; target?: unknown };
     if (disarm.pageSessionId !== pageSessionId) return false;
-    relay.disarm();
+    if (disarm.target !== "persona" && disarm.target !== "memory" && disarm.target !== "all") return false;
+    relay.disarm(disarm.target);
     return false;
   }
 

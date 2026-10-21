@@ -1,4 +1,4 @@
-import { CHANNELS, LIMITS, isSensorBatch, isSensorEvent } from "@webos/shared";
+import { CHANNELS, LIMITS, MAX_MEMORY_INJECT_CHARS, isSensorBatch, isSensorEvent } from "@webos/shared";
 import type {
   CaptureDumpResponse,
   ContentMessage,
@@ -24,12 +24,12 @@ const ports = new Set<chrome.runtime.Port>();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 const routerHost = new RouterHost({
-  sendArm: (tabId, pageSessionId, version, prompt) => {
-    const message: ContentMessage = { kind: "webos/inject.arm", v: 1, pageSessionId, version, prompt };
+  sendArm: (tabId, pageSessionId, context) => {
+    const message: ContentMessage = { kind: "webos/inject.arm", v: 1, pageSessionId, context };
     chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
   },
   sendDisarm: (tabId, pageSessionId) => {
-    const message: ContentMessage = { kind: "webos/inject.disarm", v: 1, pageSessionId };
+    const message: ContentMessage = { kind: "webos/inject.disarm", v: 1, pageSessionId, target: "persona" };
     chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
   },
 });
@@ -265,6 +265,52 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 
   if (msg.kind === "webos/router.get-enabled") {
     sendResponse({ enabled: routerHost.isEnabled });
+    return false;
+  }
+
+  if (msg.kind === "webos/memory.arm") {
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse({ ok: false, error: "bad tab id" });
+      return false;
+    }
+    if (typeof msg.text !== "string" || msg.text.length === 0 || msg.text.length > MAX_MEMORY_INJECT_CHARS) {
+      sendResponse({ ok: false, error: "memory text invalid or too long" });
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (!state) {
+      sendResponse({ ok: false, error: "unknown tab" });
+      return false;
+    }
+    const message: ContentMessage = {
+      kind: "webos/inject.arm",
+      v: 1,
+      pageSessionId: state.pageSessionId,
+      context: { memory: msg.text },
+    };
+    chrome.tabs.sendMessage(msg.tabId, message).catch(() => undefined);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.kind === "webos/memory.disarm") {
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse({ ok: false, error: "bad tab id" });
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (!state) {
+      sendResponse({ ok: false, error: "unknown tab" });
+      return false;
+    }
+    const message: ContentMessage = {
+      kind: "webos/inject.disarm",
+      v: 1,
+      pageSessionId: state.pageSessionId,
+      target: "memory",
+    };
+    chrome.tabs.sendMessage(msg.tabId, message).catch(() => undefined);
+    sendResponse({ ok: true });
     return false;
   }
 

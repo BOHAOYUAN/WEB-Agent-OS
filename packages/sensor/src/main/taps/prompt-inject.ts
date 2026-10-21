@@ -8,24 +8,45 @@
  *    field byte-for-byte intact;
  *  - never reads or writes request metadata (auth, cookies, headers);
  *  - never throws — a failed inject returns the original body unchanged.
+ *
+ * The injected prompt is composed from a `SystemContext` (memory first, persona
+ * second) so the two sources merge into ONE prefix and can no longer clobber
+ * each other.
  */
+
+import type { SystemContext } from "@webos/shared";
 
 export interface InjectResult {
   rewritten: unknown;
   injected: boolean;
 }
 
+const CONTEXT_SEPARATOR = "\n\n---\n\n";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * Append `prompt` as a trailing system message to a JSON completion body.
- * Returns `injected: false` (with the original body) whenever the body is not a
- * plain JSON string, carries neither a `messages` array nor a `prompt` string,
- * or already contains the same prompt.
+ * Merge a system context into a single prompt fragment. Order is fixed:
+ * memory → persona. Empty / missing fields are dropped.
  */
-export function injectSystemPrompt(body: unknown, prompt: string): InjectResult {
+export function composeSystemContext(context: SystemContext): string {
+  const parts = [context.memory, context.persona].filter(
+    (part): part is string => typeof part === "string" && part.trim().length > 0,
+  );
+  return parts.join(CONTEXT_SEPARATOR);
+}
+
+/**
+ * Append the composed system context as a trailing system message to a JSON
+ * completion body. Returns `injected: false` (with the original body) whenever
+ * the body is not a plain JSON string, carries neither a `messages` array nor a
+ * `prompt` string, the composed context is empty, or the body already contains
+ * the same prompt.
+ */
+export function injectSystemPrompt(body: unknown, context: SystemContext): InjectResult {
+  const prompt = composeSystemContext(context);
   if (typeof body !== "string" || body.length === 0) return { rewritten: body, injected: false };
   if (!prompt || prompt.length === 0) return { rewritten: body, injected: false };
 

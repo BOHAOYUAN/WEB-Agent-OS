@@ -56,11 +56,12 @@ export function installFetchTap(
         typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
       const url = new URL(rawUrl, base);
       if (options.match(url)) {
-        const pending = options.injector?.consume();
+        const pending = options.injector?.peek();
         if (pending) {
-          const { rewritten, injected } = injectSystemPrompt(init?.body, pending.prompt);
+          const { rewritten, injected } = injectSystemPrompt(init?.body, pending.context);
           if (injected) {
             injectionVersion = pending.version;
+            options.injector?.consume(pending.version);
             finalInit = { ...(init ?? {}), body: rewritten as BodyInit };
           }
         }
