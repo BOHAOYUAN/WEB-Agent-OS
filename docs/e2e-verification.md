@@ -1,6 +1,6 @@
 # 端到*端验证指南（E2E Verification）*
 
-> *目标：把*"120 个全绿的单测"变成"真实页面上一次可见的完整流"。  
+> *目标：把*"214 passed + 6 skipped 的单测"变成"真实页面上一次可见的完整流"。  
 > 顺序：**先本地 demo 排障 → 再真实 DeepSeek 见血**。不要跳过第一步。
 
 
@@ -10,7 +10,7 @@
 ## 0. 一句话结论（成功长什么样）
 
 - **Sensor 成功** = 侧边栏出现一张「会话卡片」，卡片上显示 `fetch`/`xhr` 标签、`answer N chars · thinking N chars`，且「查看事件」里能看到 `text.delta` 一行行滚出来。
-- **Router 成功** = 打开「人设注入」开关后，侧边栏的事件流里能看到一条 `send-prompt` 决策（通过 background 的 Service Worker 控制台观察，或看下一条消息是否带上了人设）。
+- **Router 成功** = 打开「人设注入」开关后，发一条技术问题，再看**下一条消息**的请求体是否带上了人设前缀（当前无 Router 决策日志、UI 不直接显示 `send-prompt`，只能看下一轮请求体/回答风格判断，见第 4 节）。
 
 **注意：主要观察窗口是「侧边栏」，不是页面 Console。** 代码里几乎没有 console 日志，唯一一条是 dev 构建下 `[webos-sensor] installed at <url>`。
 
@@ -35,7 +35,7 @@
 1. 确认 demo server 在跑：浏览器打开 `http://localhost:4318`，能看到「Web-OS-Agent · local SSE demo」页面。（如果打不开，终端跑 `npm run demo`。）
 2. 点扩展图标，打开 **侧边栏**（chrome.sidePanel 默认绑定 action 点击）。
 3. 回到 demo 页，点 **「XHR 发送」** 按钮。
-4. 观察侧边栏：应该出现一张会话卡片，`transport = xhr`，`answer 13 chars`（"你好，世界！…" 那串），`thinking 7 chars`（"思考：先读取问题。"）。
+4. 观察侧边栏：应该出现一张会话卡片，`transport = xhr`，`answer 35 chars`，`thinking 9 chars`。
 5. 再点 **「fetch 发送」**，应该出现第二张卡片，`transport = fetch`。
 6. 点 **「截断模式」**，卡片状态应该是 `aborted`/`transport-closed` 而非 `finished`——这验证了 SSE 截断处理。
 
@@ -49,7 +49,7 @@
 2. 打开侧边栏，确认状态是「已连接」或「等待页面流…」。
 3. 在 DeepSeek 里发一条消息，比如：**「用 Python 写一个快速排序」**。
 4. 观察侧边栏：
-   - 出现会话卡片，`transport = fetch`（DeepSeek 用 fetch 而非 XHR）。
+   - 出现会话卡片，`transport` 以卡片实际显示为准（fetch / xhr 都可能，代码两者都支持，不要在真页上预设）。
    - `answer` 字符数随回答流持续增长。
    - 如果 DeepSeek 开了「深度思考」，`thinking` 字符数也会增长。
    - 流结束，卡片状态变 `finished`。
@@ -69,10 +69,14 @@ Router 是**应答驱动**：它分析的是 DeepSeek **回答流**的文本，�
 3. Router 在回答流里匹配到 code 意图后，会发 `send-prompt` 决策 → arm 注入。
 4. **下一条消息**才会真正带上"代码狂魔"人设（这是方案 A 的固有代价，不是 bug）。
 
-**观察 Router 决策的方法**（因为侧边栏不直接显示 Router 决策）：
+**当前无法直接观察 Router 决策**：代码里没有 Router 决策日志，侧边栏也不显示 `send-prompt`，background / router-host 里没有 console 输出。所以**不要**去 Service Worker 控制台找 arm 日志——按那个方法什么都看不到，会误判成 Router 失效。
 
-- 打开 `chrome://extensions` → 找到本扩展 → 点 **「Service Worker」**（或「检查视图：Service Worker」）→ 在 Service Worker 控制台里看有没有 arm 相关日志。
-- 或：发完第一条技术问题后，再发一条，看 DeepSeek 回答风格是否明显偏向"代码狂魔"人设。
+现阶段只能通过**结果反推**：
+
+- 发完第一条技术问题后，再发一条，看下一条消息的**请求体**是否带上了人设前缀（最硬的证据）；
+- 或看 DeepSeek 回答风格是否明显偏向"代码狂魔"人设（软证据）。
+
+> 待办（backlog）：给 debug 面板加一个 `router.decision` 事件，让 Router 决策可观测，再补回本节的可视化观察方法。
 
 ---
 
