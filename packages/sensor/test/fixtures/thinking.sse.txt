@@ -1,0 +1,8 @@
+data: {"v":{"response":{"fragments":[{"type":"THINK","content":"先想"},{"type":"RESPONSE","content":"答案"}]}}}
+
+data: {"p":"response/fragments/1/content","o":"APPEND","v":"是"}
+
+data: {"v":"42"}
+
+data: {"p":"response/status","v":"FINISHED"}
+

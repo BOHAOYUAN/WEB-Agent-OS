@@ -1,0 +1,6 @@
+data: {"v":"先想"}
+
+data: {"p":"response/fragments","o":"APPEND","v":[{"type":"THINK","content":"一下"}]}
+
+data: {"p":"response/status","v":"FINISHED"}
+

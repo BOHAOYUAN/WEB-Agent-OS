@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.zip
+.DS_Store
+.env
+docs/captures/*.json
+docs/captures/*.txt
+
+# local test scratch dirs
+.tmp-e2e/
+.tmp-chrome-smoke/
+.workbuddy/

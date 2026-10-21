@@ -1,0 +1,8 @@
+data: {"v":{"response":{"fragments":[{"type":"RESPONSE","content":"你好"}]}}}
+
+data: {"p":"response/fragments/0/content","o":"APPEND","v":"，世界"}
+
+data: {"v":"！"}
+
+data: {"p":"response/status","v":"FINISHED"}
+

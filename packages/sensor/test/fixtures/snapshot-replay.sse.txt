@@ -1,0 +1,10 @@
+data: {"v":{"response":{"fragments":[{"type":"RESPONSE","content":"A"}]}}}
+
+data: {"v":"B"}
+
+data: {"v":{"response":{"fragments":[{"type":"RESPONSE","content":"AB"}]}}}
+
+data: {"v":"C"}
+
+data: {"p":"response/status","v":"FINISHED"}
+

@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Web-OS-Agent Sensor (dev)",
+  "version": "0.1.0",
+  "description": "Read-only sensor layer for AI web UIs. Dev build also matches the local demo.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://chat.deepseek.com/*",
+    "http://localhost:4318/*",
+    "http://127.0.0.1:4318/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Web-OS-Agent sensor console"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.deepseek.com/*",
+        "http://localhost:4318/*",
+        "http://127.0.0.1:4318/*"
+      ],
+      "js": [
+        "sensor-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://chat.deepseek.com/*",
+        "http://localhost:4318/*",
+        "http://127.0.0.1:4318/*"
+      ],
+      "js": [
+        "sensor-main.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

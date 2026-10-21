@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": [
+      "chrome"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@webos/shared": [
+        "packages/shared/src/index.ts"
+      ],
+      "@webos/shared/*": [
+        "packages/shared/src/*"
+      ],
+      "@webos/router": [
+        "packages/router/src/index.ts"
+      ],
+      "@webos/actor": [
+        "packages/actor/src/index.ts"
+      ],
+      "@webos/ui": [
+        "packages/ui/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web-OS-Agent · local SSE demo</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 32px; background: #0d1117; color: #e6edf3; font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      p.hint { color: #8b949e; margin: 0 0 18px; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+      button { background: #1f6feb; border: 1px solid #388bfd; color: #fff; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+      button.ghost { background: transparent; border-color: #30363d; color: #8b949e; }
+      pre { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; min-height: 220px; white-space: pre-wrap; overflow: auto; }
+      code { color: #58a6ff; }
+      .expected { color: #8b949e; font-size: 12px; margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Web-OS-Agent · local SSE demo</h1>
+    <p class="hint">
+      这是本地 mock 页面，不是 DeepSeek。加载开发版扩展后，Sensor 会以 <code>document_start</code>
+      注入并观察页面自己发出的 XHR / fetch 请求，侧边栏应出现同一条流。
+    </p>
+    <div class="row">
+      <button id="xhr">XHR 发送</button>
+      <button id="fetch">fetch 发送</button>
+      <button id="truncated">截断模式（无 FINISHED）</button>
+      <button id="reset" class="ghost">清空</button>
+    </div>
+    <pre id="raw"></pre>
+    <div class="expected">
+      期望正文：你好，世界！这是 Web-OS-Agent 的本地 SSE demo。<br />
+      期望思考：思考：先读取问题。
+    </div>
+    <script>
+      (function () {
+        var raw = document.getElementById("raw");
+
+        function reset() {
+          raw.textContent = "";
+        }
+
+        function sendXhr(truncated) {
+          reset();
+          var xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/v0/chat/completion" + (truncated ? "?case=truncated" : ""));
+          xhr.setRequestHeader("content-type", "application/json");
+          xhr.onprogress = function () {
+            raw.textContent = xhr.responseText;
+          };
+          xhr.onloadend = function () {
+            raw.textContent = xhr.responseText;
+          };
+          xhr.send(JSON.stringify({ prompt: "你好", thinking_enabled: true }));
+        }
+
+        function sendFetch(truncated) {
+          reset();
+          fetch("/api/v0/chat/completion" + (truncated ? "?case=truncated" : ""), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ prompt: "你好", thinking_enabled: true }),
+          }).then(function (response) {
+            if (!response.body) return;
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            function pump() {
+              return reader.read().then(function (result) {
+                if (result.done) return;
+                raw.textContent += decoder.decode(result.value, { stream: true });
+                return pump();
+              });
+            }
+            return pump();
+          });
+        }
+
+        document.getElementById("xhr").addEventListener("click", function () { sendXhr(false); });
+        document.getElementById("fetch").addEventListener("click", function () { sendFetch(false); });
+        document.getElementById("truncated").addEventListener("click", function () { sendXhr(true); });
+        document.getElementById("reset").addEventListener("click", reset);
+      })();
+    </script>
+  </body>
+</html>
