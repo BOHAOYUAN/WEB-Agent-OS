@@ -25,6 +25,8 @@ const SYSTEM_PROMPT = [
   "你是一个长期记忆压缩器，服务于一个 AI Agent。",
   "你的任务是把对话压缩成严格 JSON，只保留对后续对话真正有用的信息。",
   "不要编造。不确定的内容放进 open_loops，不要放进 facts。",
+  "最重要的规则：facts 只放『已经发生、且对话明确确认』的事。",
+  "计划、下一步、待办、打算做的事、未验证的结论，一律放进 open_loops，绝不放进 facts。",
   "忽略寒暄、重复、助手的长篇解释和思考过程。",
   "只输出 JSON，不要 Markdown，不要解释。",
 ].join("\n");
@@ -77,12 +79,18 @@ export function buildPrompt(transcript: string): string {
     JSON.stringify(OUTPUT_SHAPE, null, 2),
     "",
     "字段规则：",
-    "- facts：最多 5 条，已确认的事实/项目状态；每条不超过 40 个汉字。",
+    "- facts：最多 5 条，只放已经发生且对话明确确认的事实；每条不超过 40 个汉字。",
     "- preferences：最多 3 条，用户的稳定偏好或约束；每条不超过 40 个汉字。",
     "- decisions：最多 3 条，已经拍板的决策；每条不超过 40 个汉字。",
-    "- open_loops：最多 3 条，未完成/待验证/有风险的事项；每条不超过 40 个汉字。",
+    "- open_loops：最多 3 条，未完成/计划中/待验证/有风险的事项；每条不超过 40 个汉字。",
     "- summary：不超过 120 个汉字，概括这段对话对后续最有用的内容。",
     "所有数组只能包含字符串。没有内容就给空数组。只输出 JSON。",
+    "",
+    "判定示例（务必遵守）：",
+    '- 对话里说「下一步做 Stage 2」→ 这是计划，必须放 open_loops，绝不能放 facts。',
+    '- 对话里说「Stage 1 已完成并通过验证」→ 这是已确认事实，放 facts。',
+    '- 对话里说「等有空再验证这个 bug」→ 待办，放 open_loops。',
+    '- 对话里说「我更喜欢简洁的回复」→ 稳定偏好，放 preferences。',
     "",
     "对话：",
     clipped,
@@ -99,19 +107,52 @@ function asStringArray(value: unknown, limit: number): string[] {
     .map((item) => item.slice(0, 80));
 }
 
+/**
+ * Future-tense markers that must never appear in `facts`. Small models (3B)
+ * habitually write plans ("下一步做 X") as accomplished facts; injecting that
+ * into a later turn would poison the context with false facts.
+ *
+ * Relocation (not deletion) is the safe direction: an already-done item that
+ * lands in open_loops is harmless, a plan that lands in facts is not.
+ */
+export const FUTURE_MARKER = /(下一步|接下来|待办|待验证|尚未|还没|打算|计划|将会|将要做|要做|需要做|准备)/;
+
+/** Deterministic facts/open_loops boundary guard. Runs after model output. */
+export function enforceFactsBoundary(memory: MemorySummary): MemorySummary {
+  const facts: string[] = [];
+  const displaced: string[] = [];
+  for (const fact of memory.facts) {
+    if (FUTURE_MARKER.test(fact)) {
+      displaced.push(fact);
+    } else {
+      facts.push(fact);
+    }
+  }
+  if (displaced.length === 0) return memory;
+  const seen = new Set(memory.open_loops);
+  const openLoops = [...memory.open_loops];
+  for (const item of displaced) {
+    if (!seen.has(item)) {
+      seen.add(item);
+      openLoops.push(item);
+    }
+  }
+  return { ...memory, facts, open_loops: openLoops.slice(0, 5) };
+}
+
 /** Coerce an arbitrary parsed value into a validated MemorySummary. */
 export function normalizeSummary(parsed: unknown): MemorySummary {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("模型输出不是 JSON 对象");
   }
   const record = parsed as Record<string, unknown>;
-  return {
+  return enforceFactsBoundary({
     facts: asStringArray(record.facts, 5),
     preferences: asStringArray(record.preferences, 3),
     decisions: asStringArray(record.decisions, 3),
     open_loops: asStringArray(record.open_loops, 3),
     summary: typeof record.summary === "string" ? record.summary.trim().slice(0, 200) : "",
-  };
+  });
 }
 
 /** Parse the model's raw text output (may be fenced) into a MemorySummary. */

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  FUTURE_MARKER,
   MAX_PROMPT_CHARS,
   buildPrompt,
+  enforceFactsBoundary,
   normalizeSummary,
   parseModelJson,
   summarizeTranscript,
@@ -57,6 +59,45 @@ describe("normalizeSummary", () => {
   it("throws on non-object input", () => {
     expect(() => normalizeSummary(null)).toThrow();
     expect(() => normalizeSummary([1, 2])).toThrow();
+  });
+
+  it("relocates future-tense facts into open_loops (model hallucination guard)", () => {
+    const memory = normalizeSummary({
+      facts: ["Stage 1 已完成并通过验证", "下一步做 Stage 2 的 SystemContext 合并注入"],
+      preferences: [],
+      decisions: [],
+      open_loops: [],
+      summary: "s",
+    });
+    expect(memory.facts).toEqual(["Stage 1 已完成并通过验证"]);
+    expect(memory.open_loops).toContain("下一步做 Stage 2 的 SystemContext 合并注入");
+  });
+
+  it("does not duplicate displaced items already present in open_loops", () => {
+    const memory = enforceFactsBoundary({
+      facts: ["计划下周复测"],
+      preferences: [],
+      decisions: [],
+      open_loops: ["计划下周复测"],
+      summary: "",
+    });
+    expect(memory.facts).toEqual([]);
+    expect(memory.open_loops).toEqual(["计划下周复测"]);
+  });
+
+  it("prompt itself forbids plans in facts (few-shot guard)", () => {
+    const prompt = buildPrompt("用户：下一步做什么？\n助手：做 Stage 2");
+    expect(prompt).toContain("绝不能放 facts");
+    expect(prompt).toContain("判定示例");
+  });
+});
+
+describe("FUTURE_MARKER", () => {
+  it("matches the observed hallucination pattern", () => {
+    expect(FUTURE_MARKER.test("Stage 2 SystemContext 合并注入即将做")).toBe(false);
+    expect(FUTURE_MARKER.test("下一步做 Stage 2")).toBe(true);
+    expect(FUTURE_MARKER.test("计划下周复测")).toBe(true);
+    expect(FUTURE_MARKER.test("Stage 1 已完成并通过验证")).toBe(false);
   });
 });
 
