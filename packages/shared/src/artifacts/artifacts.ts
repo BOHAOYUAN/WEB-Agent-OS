@@ -1,0 +1,95 @@
+/**
+ * Artifact extraction + sandbox rendering. Pure functions only — no DOM, no
+ * I/O — so the whole sandbox contract is unit-testable in node.
+ *
+ * The security model is layered and lives entirely here:
+ *   1. `renderArtifactSrcdoc` only ever emits `sandbox = "allow-scripts"` and
+ *      never `allow-same-origin` (opaque origin → no extension access).
+ *   2. The srcdoc carries a CSP that forbids all network / external resources.
+ *   3. Only html/htm/xhtml/svg are renderable; everything else is code-only.
+ *   4. The UI must render on explicit user action — nothing here auto-executes.
+ */
+
+import type { SensorEvent } from "../types/events.js";
+import type { Artifact, ArtifactRenderKind, ArtifactRenderPlan } from "../types/artifacts.js";
+import { ARTIFACT_CSP, ARTIFACT_SANDBOX, MAX_ARTIFACT_CHARS } from "../types/artifacts.js";
+
+/** Languages that may be rendered inside the sandboxed iframe. */
+const RENDERABLE_LANGUAGES: ReadonlySet<string> = new Set(["html", "htm", "xhtml", "svg"]);
+
+/** Fence info line: optional leading/trailing horizontal whitespace, language. */
+const FENCE_RE = /```[^\S\r\n]*([a-zA-Z0-9_+#-]*)[^\S\r\n]*\r?\n([\s\S]*?)(?:\r?\n)?```/g;
+
+function normalizeLanguage(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+/**
+ * Aggregate the answer channel text in stream order, ignoring thinking deltas.
+ * Not trimmed, not regrouped by requestId — the answer stream is already ordered.
+ */
+export function buildAnswerText(events: SensorEvent[]): string {
+  let text = "";
+  for (const event of events) {
+    if (event.type === "sensor.text.delta" && event.channel === "answer") {
+      text += event.text;
+    }
+  }
+  return text;
+}
+
+/** Classify a fence language as renderable or code-only. */
+export function classifyLanguage(language: string): ArtifactRenderKind {
+  return RENDERABLE_LANGUAGES.has(normalizeLanguage(language)) ? "render" : "code";
+}
+
+/**
+ * Extract closed fenced code blocks from a full answer text.
+ *
+ * The regex is non-greedy up to the first closing fence, so an unclosed trailing
+ * fence is naturally skipped (no closing ``` to pair with). `id` is derived from
+ * the index only — never from model output.
+ */
+export function extractArtifacts(text: string): Artifact[] {
+  const artifacts: Artifact[] = [];
+  let index = 0;
+  FENCE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = FENCE_RE.exec(text)) !== null) {
+    const language = normalizeLanguage(match[1] ?? "");
+    const code = match[2] ?? "";
+    artifacts.push({
+      id: `artifact-${index}`,
+      index,
+      language,
+      code,
+      kind: classifyLanguage(language),
+    });
+    index += 1;
+  }
+  return artifacts;
+}
+
+/**
+ * Build the iframe srcdoc for a renderable artifact, or downgrade to code-only.
+ *
+ * Red lines (unit-tested): the sandbox is always exactly `ARTIFACT_SANDBOX`
+ * (never `allow-same-origin`), and the CSP forbids network. Oversized artifacts
+ * are downgraded rather than rendered.
+ */
+export function renderArtifactSrcdoc(artifact: Artifact): ArtifactRenderPlan {
+  if (artifact.kind !== "render") {
+    return { srcdoc: "", sandbox: "", kind: "code", truncated: false, reason: "unsupported-language" };
+  }
+  if (artifact.code.length > MAX_ARTIFACT_CHARS) {
+    return { srcdoc: "", sandbox: "", kind: "code", truncated: true, reason: "too-large" };
+  }
+  const srcdoc = [
+    '<!doctype html><html><head><meta charset="utf-8">',
+    `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`,
+    "</head><body>",
+    artifact.code,
+    "</body></html>",
+  ].join("");
+  return { srcdoc, sandbox: ARTIFACT_SANDBOX, kind: "render", truncated: false };
+}
