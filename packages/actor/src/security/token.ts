@@ -61,3 +61,62 @@ export class OneShotToken {
     return this.token;
   }
 }
+
+const DEFAULT_MAX_FAILURES = 5;
+const DEFAULT_BASE_BACKOFF_MS = 100;
+const DEFAULT_MAX_BACKOFF_MS = 5_000;
+
+export interface ReusableTokenOptions {
+  /** Consecutive failures before exponential backoff kicks in. */
+  maxFailures?: number;
+  /** Backoff starts here and doubles per extra failure. */
+  baseBackoffMs?: number;
+  /** Backoff ceiling, so a brute-force attacker can never lock the user out forever. */
+  maxBackoffMs?: number;
+}
+
+/**
+ * A process-lifetime handshake token that may be verified many times (unlike
+ * `OneShotToken`), which is what the sidepanel's reconnect logic needs.
+ *
+ * Security posture: constant-time comparison, bound to 127.0.0.1, and a
+ * per-token exponential backoff on repeated failures. The backoff is NOT a
+ * global lockout — it decays automatically and a correct token resets the
+ * counter, so an attacker spraying wrong tokens cannot permanently deny the
+ * legitimate client.
+ */
+export class ReusableToken {
+  private readonly token: string;
+  private failures = 0;
+  private lockedUntil = 0;
+  private readonly maxFailures: number;
+  private readonly baseBackoffMs: number;
+  private readonly maxBackoffMs: number;
+
+  constructor(token: string, options: ReusableTokenOptions = {}) {
+    this.token = token;
+    this.maxFailures = options.maxFailures ?? DEFAULT_MAX_FAILURES;
+    this.baseBackoffMs = options.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
+    this.maxBackoffMs = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
+  }
+
+  /** Verify a candidate. Returns false during backoff or on a mismatch. */
+  verify(candidate: string): boolean {
+    const now = Date.now();
+    if (now < this.lockedUntil) return false;
+
+    if (!tokenMatches(candidate, this.token)) {
+      this.failures += 1;
+      if (this.failures >= this.maxFailures) {
+        const extra = this.failures - this.maxFailures;
+        const backoff = Math.min(this.baseBackoffMs * 2 ** extra, this.maxBackoffMs);
+        this.lockedUntil = now + backoff;
+      }
+      return false;
+    }
+
+    this.failures = 0;
+    this.lockedUntil = 0;
+    return true;
+  }
+}

@@ -29,12 +29,17 @@ const common = {
   absWorkingDir: root,
 };
 
-const entries = [
+// Browser bundles (extension pages / injected worlds).
+const browserEntries = [
   { entry: "packages/sensor/src/main/index.ts", outfile: "sensor-main.js", format: "iife" },
   { entry: "packages/sensor/src/bridge/index.ts", outfile: "sensor-bridge.js", format: "iife" },
   { entry: "apps/extension/src/background.ts", outfile: "background.js", format: "esm" },
   { entry: "apps/extension/src/sidepanel.ts", outfile: "sidepanel.js", format: "esm" },
 ];
+
+// The Actor bridge CLI is a Node binary, not a browser bundle.
+const nodeCommon = { ...common, platform: "node", target: ["node22"] };
+const nodeEntries = [{ entry: "packages/actor/src/cli.ts", outfile: "actor-cli.js", format: "esm" }];
 
 async function copyStatic() {
   const manifest = prod ? "apps/extension/manifest.json" : "apps/extension/manifest.dev.json";
@@ -49,24 +54,29 @@ async function copyStatic() {
   }
 }
 
+const browserConfigs = browserEntries.map((item) => ({
+  ...common,
+  entryPoints: [item.entry],
+  outfile: join(dist, item.outfile),
+  format: item.format,
+}));
+const nodeConfigs = nodeEntries.map((item) => ({
+  ...nodeCommon,
+  entryPoints: [item.entry],
+  outfile: join(dist, item.outfile),
+  format: item.format,
+}));
+
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
 if (watch) {
-  const contexts = await Promise.all(
-    entries.map((item) =>
-      context({ ...common, entryPoints: [item.entry], outfile: join(dist, item.outfile), format: item.format }),
-    ),
-  );
+  const contexts = await Promise.all([...browserConfigs, ...nodeConfigs].map((cfg) => context(cfg)));
   await Promise.all(contexts.map((ctx) => ctx.watch()));
   await copyStatic();
   console.log("[build] watching; dist = " + dist);
 } else {
-  await Promise.all(
-    entries.map((item) =>
-      build({ ...common, entryPoints: [item.entry], outfile: join(dist, item.outfile), format: item.format }),
-    ),
-  );
+  await Promise.all([...browserConfigs, ...nodeConfigs].map((cfg) => build(cfg)));
   await copyStatic();
   console.log("[build] done; dist = " + dist + (prod ? " (prod)" : " (dev)"));
 }

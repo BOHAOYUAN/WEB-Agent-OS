@@ -23,6 +23,7 @@
     "lint": "eslint .",
     "arch": "node scripts/arch-check.mjs",
     "memory:summary": "node scripts/memory-summary.mjs",
+    "actor:start": "npm run build && node dist/actor-cli.js",
     "verify": "npm run typecheck && npm run lint && npm run arch && npm run test && npm run build"
   },
   "devDependencies": {

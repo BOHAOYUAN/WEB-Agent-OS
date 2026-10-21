@@ -13,142 +13,81 @@ afterEach(async () => {
 });
 
 /**
- * Server wiring tests. The full WebSocket happy path (frame encode/decode,
- * handshake key computation) is covered by frame.test.ts and handshake.test.ts
- * as pure functions. Here we verify the HTTP upgrade layer rejects correctly:
- *   - no Origin header -> 403
- *   - wrong token -> 401
- *   - a successful upgrade consumes the one-shot token.
+ * Drive an HTTP upgrade and return the status. A 101 comes back via the
+ * "upgrade" event; any rejection (401/403) comes back via "response".
  */
-describe("Actor server — upgrade rejection", () => {
-  it("rejects a connection with no Origin header (403)", async () => {
-    const token = generateToken();
-    server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
-
-    const http = await import("node:http");
-    const status = await new Promise<number>((resolve, reject) => {
-      const req = http.request(
-        {
-          host: "127.0.0.1",
-          port: server!.port,
-          method: "GET",
-          path: `/?token=${token}`,
-          headers: {
-            Upgrade: "websocket",
-            Connection: "Upgrade",
-            "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
-            "Sec-WebSocket-Version": "13",
-          },
-        },
-        (res) => {
-          res.resume();
-          res.on("end", () => resolve(res.statusCode ?? 0));
-        },
-      );
-      req.on("error", reject);
-      req.end();
+async function upgradeStatus(port: number, token: string, origin?: string): Promise<number> {
+  const http = await import("node:http");
+  return new Promise<number>((resolve, reject) => {
+    const req = http.request({
+      host: "127.0.0.1",
+      port,
+      method: "GET",
+      path: `/?token=${token}`,
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+        "Sec-WebSocket-Version": "13",
+        ...(origin ? { Origin: origin } : {}),
+      },
     });
-    expect(status).toBe(403);
+    const timer = setTimeout(() => resolve(0), 3000);
+    req.on("upgrade", (_res, socket) => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(101);
+    });
+    req.on("response", (res) => {
+      clearTimeout(timer);
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    req.on("error", () => {
+      clearTimeout(timer);
+      reject(new Error("request error"));
+    });
+    req.end();
+  });
+}
+
+describe("Actor server — upgrade (token-first + Origin-secondary)", () => {
+  it("accepts no Origin with a correct token (101)", async () => {
+    const token = generateToken();
+    server = await createActorServer({ allowedOrigins: [], token, port: 0 });
+    expect(await upgradeStatus(server.port, token)).toBe(101);
   });
 
-  it("rejects a connection with a wrong token (401)", async () => {
+  it("rejects an unknown Origin (403)", async () => {
     const token = generateToken();
     server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
-
-    const http = await import("node:http");
-    const status = await new Promise<number>((resolve, reject) => {
-      const req = http.request(
-        {
-          host: "127.0.0.1",
-          port: server!.port,
-          method: "GET",
-          path: "/?token=wrong",
-          headers: {
-            Upgrade: "websocket",
-            Connection: "Upgrade",
-            "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
-            "Sec-WebSocket-Version": "13",
-            Origin: "chrome-extension://abc",
-          },
-        },
-        (res) => {
-          res.resume();
-          res.on("end", () => resolve(res.statusCode ?? 0));
-        },
-      );
-      req.on("error", reject);
-      req.end();
-    });
-    expect(status).toBe(401);
+    expect(await upgradeStatus(server.port, token, "https://evil.example")).toBe(403);
   });
 
-  it("accepts a valid upgrade and consumes the one-shot token", async () => {
+  it("accepts an allowlisted Origin (101)", async () => {
     const token = generateToken();
     server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
+    expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(101);
+  });
 
-    const http = await import("node:http");
-    // First connection with the correct token must upgrade (101).
-    const first = await new Promise<number>((resolve, reject) => {
-      const req = http.request(
-        {
-          host: "127.0.0.1",
-          port: server!.port,
-          method: "GET",
-          path: `/?token=${token}`,
-          headers: {
-            Upgrade: "websocket",
-            Connection: "Upgrade",
-            "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
-            "Sec-WebSocket-Version": "13",
-            Origin: "chrome-extension://abc",
-          },
-        },
-      );
-      const timer = setTimeout(() => resolve(0), 3000);
-      req.on("upgrade", (_res, socket) => {
-        clearTimeout(timer);
-        socket.destroy();
-        resolve(101);
-      });
-      req.on("response", (res) => {
-        clearTimeout(timer);
-        res.resume();
-        resolve(res.statusCode ?? 0);
-      });
-      req.on("error", () => {
-        clearTimeout(timer);
-        reject(new Error("request error"));
-      });
-      req.end();
-    });
-    expect(first).toBe(101);
+  it("rejects an Origin when no allowlist is configured (403)", async () => {
+    const token = generateToken();
+    server = await createActorServer({ allowedOrigins: [], token, port: 0 });
+    expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(403);
+  });
 
-    // Reuse the same (now consumed) token -> 401.
-    const second = await new Promise<number>((resolve, reject) => {
-      const req = http.request(
-        {
-          host: "127.0.0.1",
-          port: server!.port,
-          method: "GET",
-          path: `/?token=${token}`,
-          headers: {
-            Upgrade: "websocket",
-            Connection: "Upgrade",
-            "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
-            "Sec-WebSocket-Version": "13",
-            Origin: "chrome-extension://abc",
-          },
-        },
-        (res) => {
-          res.resume();
-          res.on("end", () => resolve(res.statusCode ?? 0));
-        },
-      );
-      req.on("error", reject);
-      req.end();
-    });
-    expect(second).toBe(401);
-  }, 10000);
+  it("rejects a wrong token (401)", async () => {
+    const token = generateToken();
+    server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
+    expect(await upgradeStatus(server.port, "wrong", "chrome-extension://abc")).toBe(401);
+  });
+
+  it("reuses the token across multiple connections (101, 101)", async () => {
+    const token = generateToken();
+    server = await createActorServer({ allowedOrigins: ["chrome-extension://abc"], token, port: 0 });
+    expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(101);
+    expect(await upgradeStatus(server.port, token, "chrome-extension://abc")).toBe(101);
+  });
 });
 
 describe("Actor server — command policy integration", () => {
@@ -159,7 +98,6 @@ describe("Actor server — command policy integration", () => {
   });
 
   it("allows a safe allowlisted command", () => {
-    const result = evaluateCommand("git status");
-    expect(result.ok).toBe(true);
+    expect(evaluateCommand("git status").ok).toBe(true);
   });
 });

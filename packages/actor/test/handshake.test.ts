@@ -42,10 +42,10 @@ describe("evaluateHandshake", () => {
     expect(result.status).toBe(403);
   });
 
-  it("rejects a missing origin", () => {
+  it("accepts a missing origin (token-first policy)", () => {
     const { origin: _omit, ...headers } = baseRequest.headers;
     const result = evaluateHandshake({ ...baseRequest, headers }, { allowedOrigins: ["chrome-extension://abcdef"] });
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
   });
 
   it("rejects a missing Sec-WebSocket-Key", () => {

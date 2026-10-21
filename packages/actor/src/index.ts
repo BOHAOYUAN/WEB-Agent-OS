@@ -17,3 +17,4 @@ export * from "./transport/heartbeat.js";
 export * from "./security/token.js";
 export * from "./security/command-policy.js";
 export * from "./exec/runner.js";
+export * from "./memory/summarize.js";

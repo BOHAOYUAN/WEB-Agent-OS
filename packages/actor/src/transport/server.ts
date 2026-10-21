@@ -3,33 +3,41 @@
  *
  * Lifecycle of a connection:
  *   1. HTTP upgrade request arrives on 127.0.0.1.
- *   2. Origin is checked against the allowlist, then the one-shot token is
- *      consumed. Either failing rejects the upgrade.
+ *   2. Origin is checked against the allowlist (token-first: an absent Origin
+ *      skips the check), then the reusable token is verified. Either failing
+ *      rejects the upgrade.
  *   3. On success the socket is upgraded and wrapped in a FrameDecoder; the
  *      heartbeat starts.
- *   4. Text messages are parsed as ActorCommand JSON and dispatched to a
+ *   4. Text messages are validated against the v2 contract and dispatched to a
  *      handler; responses are encoded as text frames.
  *
- * No shell is ever invoked here; command execution is delegated to the runner,
- * which itself only runs allowlisted argv.
+ * No shell is ever invoked for builtin commands; `exec` is delegated to the
+ * runner, which itself only runs allowlisted argv.
  */
 
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import type { IncomingMessage } from "node:http";
 import type { ActorCommand, ActorResult } from "@webos/shared";
-import { ACTOR_PROTOCOL_VERSION } from "@webos/shared";
+import { ACTOR_PROTOCOL_VERSION, isRecord, validateActorCommand } from "@webos/shared";
 import { evaluateHandshake } from "./handshake.js";
 import { encodeFrame, FrameDecoder } from "./frame.js";
 import { Heartbeat } from "./heartbeat.js";
-import { OneShotToken } from "../security/token.js";
+import { ReusableToken } from "../security/token.js";
 import { evaluateCommand } from "../security/command-policy.js";
 import { executeCommand, type ExecutionOptions } from "../exec/runner.js";
+import { summarizeTranscript } from "../memory/summarize.js";
+
+/** Local Ollama configuration for the builtin `memory-summary` command. */
+export interface SummarizeConfig {
+  endpoint?: string;
+  model?: string;
+}
 
 export interface ActorServerOptions {
   /** Origins allowed to connect (e.g. the extension's origin). */
   allowedOrigins: readonly string[];
-  /** The one-shot handshake token the extension must present. */
+  /** The reusable handshake token the extension must present. */
   token: string;
   /** Host to bind (always 127.0.0.1 in practice). */
   host?: string;
@@ -37,6 +45,8 @@ export interface ActorServerOptions {
   port?: number;
   /** Execution containment defaults. */
   exec?: Partial<ExecutionOptions>;
+  /** Local Ollama config for the memory-summary builtin. */
+  ollama?: SummarizeConfig;
   /** Heartbeat tuning. */
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
   /** Command handler override (for tests). Defaults to local execution. */
@@ -73,7 +83,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 0;
   const allowedOrigins = options.allowedOrigins;
-  const oneShot = new OneShotToken(options.token);
+  const reusable = new ReusableToken(options.token);
   const exec: ExecutionOptions = { ...DEFAULT_EXEC, ...options.exec };
   const log = options.log ?? (() => undefined);
 
@@ -113,7 +123,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     // extension's path (chrome WebSocket can't set custom headers easily).
     const url = new URL(request.url ?? "/", "http://localhost");
     const candidate = url.searchParams.get("token") ?? request.headers["x-webos-token"];
-    if (typeof candidate !== "string" || !oneShot.consume(candidate)) {
+    if (typeof candidate !== "string" || !reusable.verify(candidate)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
@@ -131,7 +141,13 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     ].join("\r\n");
     socket.write(headerLines);
 
-    const connection = attachConnection(socket, { exec, log, onCommand: options.onCommand, heartbeat: options.heartbeat });
+    const connection = attachConnection(socket, {
+      exec,
+      log,
+      ollama: options.ollama,
+      onCommand: options.onCommand,
+      heartbeat: options.heartbeat,
+    });
     connections.add(connection);
     socket.on("close", () => {
       connection.heartbeat.stop();
@@ -164,6 +180,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
 interface AttachOptions {
   exec: ExecutionOptions;
   log: (line: string) => void;
+  ollama?: SummarizeConfig;
   onCommand?: (command: ActorCommand) => Promise<ActorResult>;
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
 }
@@ -214,35 +231,46 @@ async function handleMessage(
   socket: Socket,
   options: AttachOptions,
 ): Promise<void> {
-  let command: ActorCommand;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(data.toString("utf8")) as ActorCommand;
-    if (parsed.v !== ACTOR_PROTOCOL_VERSION || parsed.kind !== "exec") {
-      sendResult(socket, { v: ACTOR_PROTOCOL_VERSION, id: parsed.id ?? "", ok: false, code: "denied", message: "invalid command" });
-      return;
-    }
-    command = parsed;
+    parsed = JSON.parse(data.toString("utf8"));
   } catch {
     sendResult(socket, { v: ACTOR_PROTOCOL_VERSION, id: "", ok: false, code: "denied", message: "malformed JSON" });
     return;
   }
 
+  const validation = validateActorCommand(parsed);
+  if (!validation.ok) {
+    const id = isRecord(parsed) && typeof parsed.id === "string" ? parsed.id : "";
+    sendResult(socket, { v: ACTOR_PROTOCOL_VERSION, id, ok: false, code: "denied", message: validation.reason });
+    return;
+  }
+  const command = validation.command;
+
   let result: ActorResult;
   if (options.onCommand) {
     result = await options.onCommand(command);
   } else {
-    result = await defaultCommandHandler(command, options.exec);
+    result = await defaultCommandHandler(command, options.exec, options.ollama);
   }
   sendResult(socket, result);
 }
 
-async function defaultCommandHandler(command: ActorCommand, exec: ExecutionOptions): Promise<ActorResult> {
-  // The bridge only ever sends code for `node` execution in this phase; the
-  // contract still allows python for forward-compat, but it is denied here.
-  if (command.runtime !== "node") {
-    return { v: ACTOR_PROTOCOL_VERSION, id: command.id, ok: false, code: "denied", message: "unsupported runtime" };
+async function defaultCommandHandler(
+  command: ActorCommand,
+  exec: ExecutionOptions,
+  ollama?: SummarizeConfig,
+): Promise<ActorResult> {
+  if (command.kind === "memory-summary") {
+    return handleMemorySummary(command, ollama);
   }
+  return handleExec(command, exec);
+}
 
+async function handleExec(
+  command: Extract<ActorCommand, { kind: "exec" }>,
+  exec: ExecutionOptions,
+): Promise<ActorResult> {
   // The "code" field is treated as a command line to run, not raw source. It
   // MUST pass the allowlist/denylist before anything is spawned.
   const policy = evaluateCommand(command.code);
@@ -268,6 +296,7 @@ async function defaultCommandHandler(command: ActorCommand, exec: ExecutionOptio
       v: ACTOR_PROTOCOL_VERSION,
       id: command.id,
       ok: true,
+      kind: "exec",
       stdout: outcome.stdout,
       stderr: outcome.stderr,
       exitCode,
@@ -279,6 +308,33 @@ async function defaultCommandHandler(command: ActorCommand, exec: ExecutionOptio
     ok: false,
     code: "denied",
     message: `command exited with code ${exitCode}`,
+  };
+}
+
+async function handleMemorySummary(
+  command: Extract<ActorCommand, { kind: "memory-summary" }>,
+  ollama?: SummarizeConfig,
+): Promise<ActorResult> {
+  // Builtin capability: internal function call to local Ollama — it never
+  // spawns a shell and never goes through the command allowlist.
+  const result = await summarizeTranscript({
+    transcript: command.transcript,
+    timeoutMs: command.timeoutMs,
+    endpoint: ollama?.endpoint,
+    model: ollama?.model,
+  });
+
+  if (!result.ok) {
+    return { v: ACTOR_PROTOCOL_VERSION, id: command.id, ok: false, code: result.code, message: result.message };
+  }
+  return {
+    v: ACTOR_PROTOCOL_VERSION,
+    id: command.id,
+    ok: true,
+    kind: "memory-summary",
+    memory: result.memory,
+    model: result.model,
+    elapsedMs: result.elapsedMs,
   };
 }
 

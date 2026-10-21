@@ -34,7 +34,11 @@ export interface HandshakeResult {
 }
 
 export interface HandshakeOptions {
-  /** Origins allowed to connect. Empty array rejects everything. */
+  /**
+   * Origins allowed to connect. Token-first policy: an absent Origin skips the
+   * check (relying on the token gate); an empty allowlist rejects any request
+   * that DOES carry an Origin.
+   */
   allowedOrigins: readonly string[];
   /** Expected `Sec-WebSocket-Key` presence is enforced by default. */
   requireKey?: boolean;
@@ -63,14 +67,20 @@ export function evaluateHandshake(
     return { ok: false, status: 400, reason: "invalid Upgrade header" };
   }
 
+  // token-first + Origin-secondary policy:
+  //  - an absent Origin (Node clients / some platforms) skips the Origin check
+  //    and relies on the token gate enforced by the server;
+  //  - an Origin present but no allowlist configured → reject, so we never
+  //    admit an unknown browser source by accident;
+  //  - an Origin present with an allowlist → exact match required.
   const origin = request.headers["origin"];
-  if (options.allowedOrigins.length === 0) {
-    return { ok: false, status: 403, reason: "no origins allowed" };
-  }
-  // An absent Origin is only tolerated for non-browser clients; the extension
-  // always sends one, so we require it when an allowlist is configured.
-  if (!origin || !options.allowedOrigins.includes(origin)) {
-    return { ok: false, status: 403, reason: "origin not allowed" };
+  if (origin) {
+    if (options.allowedOrigins.length === 0) {
+      return { ok: false, status: 403, reason: "no origins allowed" };
+    }
+    if (!options.allowedOrigins.includes(origin)) {
+      return { ok: false, status: 403, reason: "origin not allowed" };
+    }
   }
 
   if (!key) {

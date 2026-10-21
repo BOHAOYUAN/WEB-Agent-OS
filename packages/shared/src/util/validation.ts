@@ -1,6 +1,8 @@
 import { LIMITS } from "../constants.js";
 import type { SensorEvent } from "../types/events.js";
 import type { BridgeToMainEnvelope, BridgeToMainMessage, MainEnvelope, SensorBatch } from "../types/messages.js";
+import { ACTOR_LIMITS, ACTOR_PROTOCOL_VERSION } from "../types/actor.js";
+import type { ActorCommand } from "../types/actor.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,4 +103,39 @@ export function isInjectArmMessage(value: unknown): value is BridgeToMainMessage
     return value.v === 1;
   }
   return false;
+}
+
+export type ActorCommandValidation =
+  | { ok: true; command: ActorCommand }
+  | { ok: false; reason: string };
+
+/**
+ * Validate an inbound Actor command against the v2 contract. This is the single
+ * gate before a command is dispatched: it enforces the protocol version, the
+ * per-kind required fields, and the transcript/timeout hard limits. Anything
+ * that fails here is rejected without touching the shell or Ollama.
+ */
+export function validateActorCommand(value: unknown): ActorCommandValidation {
+  if (!isRecord(value)) return { ok: false, reason: "not an object" };
+  if (value.v !== ACTOR_PROTOCOL_VERSION) return { ok: false, reason: "protocol version mismatch" };
+  if (typeof value.id !== "string" || value.id.length === 0) return { ok: false, reason: "missing id" };
+  if (!Number.isInteger(value.timeoutMs)) return { ok: false, reason: "timeoutMs must be an integer" };
+  const timeoutMs = value.timeoutMs as number;
+  if (timeoutMs < ACTOR_LIMITS.minTimeoutMs || timeoutMs > ACTOR_LIMITS.maxTimeoutMs) {
+    return { ok: false, reason: "timeoutMs out of range" };
+  }
+
+  if (value.kind === "exec") {
+    if (value.runtime !== "node") return { ok: false, reason: "unsupported runtime" };
+    if (typeof value.code !== "string" || value.code.length === 0) return { ok: false, reason: "missing code" };
+    return { ok: true, command: value as ActorCommand };
+  }
+
+  if (value.kind === "memory-summary") {
+    if (typeof value.transcript !== "string" || value.transcript.length === 0) return { ok: false, reason: "missing transcript" };
+    if (value.transcript.length > ACTOR_LIMITS.maxTranscriptChars) return { ok: false, reason: "transcript too large" };
+    return { ok: true, command: value as ActorCommand };
+  }
+
+  return { ok: false, reason: "unknown command kind" };
 }
