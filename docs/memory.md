@@ -28,6 +28,16 @@
 - 这台 G513QM 的 RTX 3060 有 Modern Standby 后掉 PCIe（Code 45）的问题；如果 GPU 消失，Ollama 会退到 CPU，3B 单次可能到 40s+。**不要设计成必须有 GPU。**
 - 上下文不要塞满 8K：总结只保留最近 4000 字符，CPU 预填充才不会拖慢。
 
+### 本机实测（2026-10-22 02:15）
+
+- 便携 Ollama v0.40.7：E:\tools\ollama\ollama.exe
+- 模型：E:\tools\ollama-models\qwen2.5:3b（1.9GB）
+- 启动：E:\tools\ollama\start-ollama.cmd
+- 实测环境：RTX 3060 Laptop 6GB，100% GPU，2.4GB 显存，8192 context
+- 643 字对话：冷启动 4.49s，热启动 1.95s（约 116–121 tok/s）
+- 1933 字对话：2.44s
+- CPU 回退为估算值（20–40s），未实测；dGPU 掉 PCIe 时用 CPU 或重启。
+
 ## 3. 安装与运行
 
 ~~~powershell
