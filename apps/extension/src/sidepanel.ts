@@ -1,6 +1,7 @@
 import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
-import type { ActorResult, CaptureDumpResponse, MemorySource, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
-import { mountDebugPanel } from "@webos/ui";
+import type { ActorResult, ArtifactsResponse, CaptureDumpResponse, MemorySource, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
+import { mountArtifactPanel, mountDebugPanel } from "@webos/ui";
+import type { ArtifactsLoadResult } from "@webos/ui";
 import { ActorClient, nextCommandId } from "./actor-client.js";
 import { mountActorPanel, type ActorPanel } from "./actor-ui.js";
 import type { TranscriptLoadResult } from "./actor-ui.js";
@@ -114,6 +115,18 @@ async function loadTranscript(): Promise<TranscriptLoadResult> {
     hasUserPrompts: response.hasUserPrompts,
     tabId,
     pageSessionId: response.pageSessionId,
+  };
+}
+
+async function loadArtifacts(): Promise<ArtifactsLoadResult> {
+  const tabId = await getActiveTabId();
+  const response = await sendRuntime<ArtifactsResponse>({ kind: "webos/artifacts.request", tabId });
+  if (response.kind !== "webos/artifacts.result") throw new Error("读取 Artifacts 失败");
+  return {
+    artifacts: response.artifacts,
+    answerChars: response.answerChars,
+    pageSessionId: response.pageSessionId,
+    tabId,
   };
 }
 
@@ -238,3 +251,9 @@ async function initActorPanel(): Promise<void> {
 }
 
 void initActorPanel();
+
+// --- Artifacts panel (sandboxed code blocks) ---
+const artifactRoot = document.getElementById("artifact-root");
+if (artifactRoot) {
+  mountArtifactPanel(artifactRoot, { onLoadArtifacts: loadArtifacts });
+}
