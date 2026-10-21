@@ -161,4 +161,13 @@ describe("background memory clear-captured", () => {
     const stopCapture = sentToContent.find((m) => m.message.kind === "webos/memory.set-capture");
     expect(stopCapture?.message).toMatchObject({ kind: "webos/memory.set-capture", enabled: false });
   });
+
+  it("turns capture off so capture.get returns false after clear", () => {
+    expect(dispatch({ kind: "webos/memory.capture.set", tabId: TAB_ID, enabled: true })).toEqual({ ok: true });
+    expect(dispatch({ kind: "webos/memory.capture.get" })).toEqual({ enabled: true });
+
+    dispatch({ kind: "webos/memory.clear-captured", tabId: TAB_ID });
+
+    expect(dispatch({ kind: "webos/memory.capture.get" })).toEqual({ enabled: false });
+  });
 });

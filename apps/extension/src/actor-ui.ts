@@ -150,7 +150,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   loadMemoryButton.textContent = "读取已保存记忆";
   const clearMemoryButton = document.createElement("button");
   clearMemoryButton.className = "ws-button ws-button-ghost";
-  clearMemoryButton.textContent = "清空记忆";
+  clearMemoryButton.textContent = "清空并停止捕获";
   opsRow.append(saveMemoryButton, injectButton, loadMemoryButton, clearMemoryButton);
 
   const result = document.createElement("pre");
@@ -323,7 +323,11 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     void options
       .onClearMemory()
       .then((response) => {
-        result.textContent = JSON.stringify(response, null, 2);
+        if (!response.ok) {
+          result.textContent = "清空失败：" + response.message;
+          return;
+        }
+        result.textContent = "已清空本地 transcript 与磁盘记忆，捕获已关闭；继续记录请重新勾选";
       })
       .catch((error: unknown) => {
         result.textContent = "清空失败：" + (error instanceof Error ? error.message : String(error));
