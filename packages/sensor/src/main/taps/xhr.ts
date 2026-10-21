@@ -1,4 +1,4 @@
-import { extractCompletionMeta } from "@webos/shared";
+import { extractCompletionMeta, extractUserPrompt } from "@webos/shared";
 import type { TapInstallOptions } from "./types.js";
 import { injectSystemPrompt } from "./prompt-inject.js";
 
@@ -36,12 +36,21 @@ export function installXhrTap(options: TapInstallOptions & { XHRClass?: typeof X
     const state = (this as unknown as { __webosXhr?: XhrState }).__webosXhr;
     let finalArgs = args;
     let injectionVersion: number | undefined;
+    let requestId: string | undefined;
 
     try {
       if (state) {
         const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
         const url = new URL(state.url, base);
         if (options.match(url)) {
+          requestId = crypto.randomUUID();
+
+          // Opt-in user prompt capture (before injection, on the original body).
+          if (options.memoryCapture?.enabled) {
+            const text = extractUserPrompt(args[0]);
+            if (text) options.onUserPrompt?.(requestId, text);
+          }
+
           const pending = options.injector?.peek();
           if (pending) {
             const { rewritten, injected } = injectSystemPrompt(args[0], pending.context);
@@ -59,15 +68,14 @@ export function installXhrTap(options: TapInstallOptions & { XHRClass?: typeof X
     }
 
     try {
-      if (state) {
+      if (state && requestId) {
         const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
         const url = new URL(state.url, base);
         if (options.match(url)) {
-          const id = crypto.randomUUID();
           const body = finalArgs[0];
           const meta = extractCompletionMeta(typeof body === "string" ? body : undefined);
           options.onStart({
-            requestId: id,
+            requestId,
             transport: "xhr",
             endpoint: url.pathname,
             thinkingEnabled: meta.thinkingEnabled,
@@ -84,7 +92,7 @@ export function installXhrTap(options: TapInstallOptions & { XHRClass?: typeof X
               if (responseType !== "" && responseType !== "text") {
                 if (!reportedType) {
                   reportedType = true;
-                  options.onError(id, "unsupported-response-type", `Unsupported responseType: ${responseType}`, false);
+                  options.onError(requestId, "unsupported-response-type", `Unsupported responseType: ${responseType}`, false);
                 }
                 return;
               }
@@ -94,20 +102,20 @@ export function installXhrTap(options: TapInstallOptions & { XHRClass?: typeof X
               if (text.length > lastLength) {
                 const chunk = text.slice(lastLength);
                 lastLength = text.length;
-                if (chunk) options.onChunk(id, chunk);
+                if (chunk) options.onChunk(requestId, chunk);
               }
             } catch (error) {
-              options.onError(id, "tap-error", error instanceof Error ? error.message : String(error), false);
+              options.onError(requestId, "tap-error", error instanceof Error ? error.message : String(error), false);
             }
           };
 
           this.addEventListener("progress", read);
           this.addEventListener("readystatechange", read);
-          this.addEventListener("abort", () => options.onEnd(id, "aborted"));
-          this.addEventListener("error", () => options.onEnd(id, "error"));
+          this.addEventListener("abort", () => options.onEnd(requestId, "aborted"));
+          this.addEventListener("error", () => options.onEnd(requestId, "error"));
           this.addEventListener("loadend", () => {
             read();
-            options.onEnd(id, "transport-closed");
+            options.onEnd(requestId, "transport-closed");
           });
         }
       }

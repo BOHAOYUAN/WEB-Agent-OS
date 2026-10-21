@@ -9,19 +9,30 @@
 import type { ActorResult } from "@webos/shared";
 import type { ActorState } from "./actor-client.js";
 
+export interface TranscriptLoadResult {
+  transcript: string;
+  turns: number;
+  chars: number;
+  hasUserPrompts: boolean;
+}
+
 export interface ActorPanelOptions {
   initialToken: string;
   /** chrome.runtime.id — shown so the user can pass --allow-origin. */
   extensionId: string;
+  captureEnabled?: boolean;
   onSaveToken: (token: string) => void;
   onConnect: () => void;
   onDisconnect: () => void;
   onSummarize: (transcript: string) => Promise<ActorResult>;
+  onToggleCapture: (enabled: boolean) => void;
+  onLoadTranscript: () => Promise<TranscriptLoadResult>;
 }
 
 export interface ActorPanel {
   setState(state: ActorState, detail: string): void;
   setToken(token: string): void;
+  setCaptureEnabled(enabled: boolean): void;
   dispose(): void;
 }
 
@@ -70,6 +81,16 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   originRow.className = "actor-origin";
   originRow.textContent = `extension id: ${options.extensionId} · 若连接被 403，请在 CLI 加 --allow-origin chrome-extension://${options.extensionId}`;
 
+  const captureRow = document.createElement("label");
+  captureRow.className = "actor-capture";
+  const captureToggle = document.createElement("input");
+  captureToggle.type = "checkbox";
+  captureToggle.checked = options.captureEnabled ?? false;
+  const captureNote = document.createElement("span");
+  captureNote.className = "actor-capture-note";
+  captureNote.textContent = "允许捕获用户提问（仅存本地 ring buffer，默认关，可清除）";
+  captureRow.append(captureToggle, captureNote);
+
   const transcriptBox = document.createElement("div");
   transcriptBox.className = "actor-transcript";
   const transcriptLabel = document.createElement("div");
@@ -81,6 +102,16 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   transcriptArea.placeholder = "用户：…\n助手：…";
   transcriptBox.append(transcriptLabel, transcriptArea);
 
+  const transcriptActions = document.createElement("div");
+  transcriptActions.className = "actor-transcript-actions";
+  const loadButton = document.createElement("button");
+  loadButton.className = "ws-button ws-button-ghost";
+  loadButton.textContent = "读取当前对话";
+  const transcriptStats = document.createElement("span");
+  transcriptStats.className = "actor-stats";
+  transcriptStats.textContent = "";
+  transcriptActions.append(loadButton, transcriptStats);
+
   const summarizeButton = document.createElement("button");
   summarizeButton.className = "ws-button";
   summarizeButton.textContent = "总结当前对话";
@@ -90,7 +121,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   result.className = "actor-result";
   result.textContent = "（尚未生成记忆）";
 
-  card.append(header, tokenRow, controls, originRow, transcriptBox, summarizeButton, result);
+  card.append(header, tokenRow, controls, originRow, captureRow, transcriptBox, transcriptActions, summarizeButton, result);
   root.replaceChildren(card);
 
   let connected = false;
@@ -119,6 +150,32 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     else options.onConnect();
   });
 
+  captureToggle.addEventListener("change", () => {
+    options.onToggleCapture(captureToggle.checked);
+  });
+
+  loadButton.addEventListener("click", () => {
+    loadButton.disabled = true;
+    transcriptStats.textContent = "读取中…";
+    void options
+      .onLoadTranscript()
+      .then((loaded) => {
+        transcriptArea.value = loaded.transcript;
+        transcriptStats.textContent = `${loaded.turns} 轮 · ${loaded.chars} 字符${loaded.hasUserPrompts ? "" : " · 无用户提问"} `;
+        if (loaded.transcript.length === 0) {
+          transcriptStats.textContent = "（没有可读取的对话，请先开启捕获并发送消息）";
+        } else if (!loaded.hasUserPrompts) {
+          transcriptStats.textContent += "（仅助手输出，未捕获用户提问）";
+        }
+      })
+      .catch((error: unknown) => {
+        transcriptStats.textContent = "读取失败：" + (error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!disposed) loadButton.disabled = false;
+      });
+  });
+
   summarizeButton.addEventListener("click", () => {
     const transcript = transcriptArea.value.trim();
     if (!transcript) {
@@ -144,6 +201,9 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     setState,
     setToken(token: string): void {
       tokenInput.value = token;
+    },
+    setCaptureEnabled(enabled: boolean): void {
+      captureToggle.checked = enabled;
     },
     dispose(): void {
       disposed = true;

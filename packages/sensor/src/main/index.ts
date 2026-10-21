@@ -17,14 +17,19 @@ function boot(): void {
 
   const channel = createChannel();
   const injector = createInjectorState();
+  const memoryCapture = { enabled: false };
 
-  // Reverse channel: consume persona injections armed by the Router (via the
-  // bridge). The nonce is shared with the bridge through the document dataset.
+  // Reverse channel: consume system-context injections armed by the bridge, and
+  // apply the opt-in user-prompt capture switch. The nonce is shared with the
+  // bridge through the document dataset.
   const nonce = document.documentElement?.dataset.webosNonce ?? "";
   if (nonce) {
     installReverseChannel({ nonce }, {
       onArm: (version, context) => injector.arm(version, context),
       onDisarm: () => injector.disarm(),
+      onSetCapture: (enabled) => {
+        memoryCapture.enabled = enabled;
+      },
     });
   }
 
@@ -34,7 +39,9 @@ function boot(): void {
     onChunk: (requestId, chunk) => channel.chunk(requestId, chunk),
     onEnd: (requestId, reason) => channel.end(requestId, reason),
     onError: (requestId, code, message, fatal) => channel.tapError(requestId, code, message, fatal),
+    onUserPrompt: (requestId, text) => channel.userPrompt(requestId, text),
     injector,
+    memoryCapture,
   };
 
   installXhrTap(callbacks);

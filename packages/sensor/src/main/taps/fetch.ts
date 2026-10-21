@@ -1,4 +1,4 @@
-import { extractCompletionMeta } from "@webos/shared";
+import { extractCompletionMeta, extractUserPrompt } from "@webos/shared";
 import type { TapCallbacks, TapInstallOptions } from "./types.js";
 import { injectSystemPrompt } from "./prompt-inject.js";
 
@@ -49,13 +49,33 @@ export function installFetchTap(
   ): Promise<Response> {
     let finalInit = init;
     let injectionVersion: number | undefined;
+    let requestId: string | undefined;
 
+    const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
+    let url: URL | null = null;
     try {
-      const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
       const rawUrl =
         typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
-      const url = new URL(rawUrl, base);
-      if (options.match(url)) {
+      url = new URL(rawUrl, base);
+    } catch {
+      url = null;
+    }
+
+    if (url && options.match(url)) {
+      requestId = crypto.randomUUID();
+
+      // Opt-in user prompt capture (before injection, on the original body).
+      if (options.memoryCapture?.enabled) {
+        try {
+          const text = extractUserPrompt(init?.body);
+          if (text) options.onUserPrompt?.(requestId, text);
+        } catch {
+          // Capture must never break the request.
+        }
+      }
+
+      // System-context injection (peek -> inject -> consume on success).
+      try {
         const pending = options.injector?.peek();
         if (pending) {
           const { rewritten, injected } = injectSystemPrompt(init?.body, pending.context);
@@ -65,23 +85,18 @@ export function installFetchTap(
             finalInit = { ...(init ?? {}), body: rewritten as BodyInit };
           }
         }
+      } catch {
+        // A rewrite failure must never block the request.
       }
-    } catch {
-      // A rewrite failure must never block the request.
     }
 
     const promise = Reflect.apply(originalFetch, scope, [input, finalInit]) as Promise<Response>;
 
-    try {
-      const base = options.baseHref ?? (typeof location !== "undefined" ? location.href : "https://chat.deepseek.com/");
-      const rawUrl =
-        typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
-      const url = new URL(rawUrl, base);
-      if (options.match(url)) {
-        const id = crypto.randomUUID();
+    if (requestId && url) {
+      try {
         const meta = extractCompletionMeta(init?.body);
         options.onStart({
-          requestId: id,
+          requestId,
           transport: "fetch",
           endpoint: url.pathname,
           thinkingEnabled: meta.thinkingEnabled,
@@ -95,17 +110,17 @@ export function installFetchTap(
             try {
               clone = response.clone();
             } catch (error) {
-              options.onError(id, "tap-error", error instanceof Error ? error.message : String(error), false);
-              options.onEnd(id, "error");
+              options.onError(requestId as string, "tap-error", error instanceof Error ? error.message : String(error), false);
+              options.onEnd(requestId as string, "error");
               return;
             }
-            void pump(clone, id, options);
+            void pump(clone, requestId as string, options);
           },
-          () => options.onEnd(id, "error"),
+          () => options.onEnd(requestId as string, "error"),
         );
+      } catch {
+        // Observation must never break the page.
       }
-    } catch {
-      // Observation must never break the page.
     }
 
     return promise;

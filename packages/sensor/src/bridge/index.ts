@@ -25,6 +25,16 @@ const sender = new SensorSender(pageSessionId, () => badge.setOffline());
 const relay = new InjectRelay({ nonce });
 let installed = false;
 
+// Restore the capture switch from the service worker on startup (default off).
+try {
+  chrome.runtime.sendMessage({ kind: "webos/memory.capture.get" }, (response: unknown) => {
+    const enabled = (response as { enabled?: unknown } | undefined)?.enabled;
+    if (typeof enabled === "boolean") relay.setCapture(enabled);
+  });
+} catch {
+  // Default off.
+}
+
 function isOurMessage(message: MainToBridgeMessage): boolean {
   if (message.pageSessionId !== pageSessionId) return false;
   switch (message.kind) {
@@ -48,6 +58,8 @@ function isOurMessage(message: MainToBridgeMessage): boolean {
       );
     case "webos/sensor.tap-error":
       return typeof message.code === "string" && typeof message.message === "string" && typeof message.fatal === "boolean";
+    case "webos/memory.user-prompt":
+      return typeof message.requestId === "string" && typeof message.text === "string" && typeof message.ts === "number";
     default:
       return false;
   }
@@ -122,6 +134,15 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
       sender.enqueue(sensorEvent);
       return;
     }
+    case "webos/memory.user-prompt": {
+      sender.enqueue({
+        type: "sensor.user.prompt",
+        requestId: message.requestId,
+        text: message.text,
+        ts: message.ts,
+      });
+      return;
+    }
   }
 });
 
@@ -151,6 +172,13 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     if (disarm.pageSessionId !== pageSessionId) return false;
     if (disarm.target !== "persona" && disarm.target !== "memory" && disarm.target !== "all") return false;
     relay.disarm(disarm.target);
+    return false;
+  }
+
+  if (kind === "webos/memory.set-capture") {
+    const setCapture = message as { enabled?: unknown };
+    if (typeof setCapture.enabled !== "boolean") return false;
+    relay.setCapture(setCapture.enabled);
     return false;
   }
 

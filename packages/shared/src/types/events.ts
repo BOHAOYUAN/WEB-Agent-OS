@@ -55,12 +55,21 @@ export interface SensorErrorEvent {
   fatal: boolean;
 }
 
+/** Opt-in capture of a user's question text (privacy-gated, never persisted raw). */
+export interface SensorUserPromptEvent {
+  type: "sensor.user.prompt";
+  requestId: string;
+  text: string;
+  ts: number;
+}
+
 export type SensorEvent =
   | SensorStreamStartEvent
   | SensorStreamMetaEvent
   | SensorTextDeltaEvent
   | SensorStreamEndEvent
-  | SensorErrorEvent;
+  | SensorErrorEvent
+  | SensorUserPromptEvent;
 
 export interface StreamSummary {
   requestId: string;

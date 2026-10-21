@@ -101,6 +101,11 @@ export class InjectRelay {
     this.push({ kind: "webos/inject.arm", v: 1, version: this.pending.version, context: this.pending.context });
   }
 
+  /** Push the opt-in user-prompt capture switch into MAIN. Not part of the pending injection. */
+  setCapture(enabled: boolean): void {
+    this.push({ kind: "webos/memory.set-capture", v: 1, enabled });
+  }
+
   get pendingInjection(): PendingInjection | null {
     return this.pending;
   }

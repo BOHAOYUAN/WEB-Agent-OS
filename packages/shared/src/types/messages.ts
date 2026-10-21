@@ -31,6 +31,14 @@ export type MainToBridgeMessage =
       code: SensorErrorCode;
       message: string;
       fatal: boolean;
+    }
+  | {
+      kind: "webos/memory.user-prompt";
+      v: 1;
+      pageSessionId: string;
+      requestId: string;
+      text: string;
+      ts: number;
     };
 
 export interface MainEnvelope {
@@ -43,7 +51,8 @@ export interface MainEnvelope {
 /** Reverse channel: messages pushed from the bridge (ISOLATED) to main (MAIN). */
 export type BridgeToMainMessage =
   | { kind: "webos/inject.arm"; v: 1; version: number; context: SystemContext }
-  | { kind: "webos/inject.disarm"; v: 1 };
+  | { kind: "webos/inject.disarm"; v: 1 }
+  | { kind: "webos/memory.set-capture"; v: 1; enabled: boolean };
 
 export interface BridgeToMainEnvelope {
   source: "webos.sensor.bridge";
@@ -80,7 +89,10 @@ export type RuntimeMessage =
   | { kind: "webos/router.set-enabled"; enabled: boolean }
   | { kind: "webos/router.get-enabled" }
   | { kind: "webos/memory.arm"; tabId: number; text: string }
-  | { kind: "webos/memory.disarm"; tabId: number };
+  | { kind: "webos/memory.disarm"; tabId: number }
+  | { kind: "webos/memory.capture.set"; tabId: number; enabled: boolean }
+  | { kind: "webos/memory.capture.get" }
+  | { kind: "webos/memory.transcript.request"; tabId: number };
 
 export interface CaptureDumpResponse {
   kind: "webos/capture.dump.result";
@@ -92,7 +104,17 @@ export interface CaptureDumpResponse {
 export type ContentMessage =
   | { kind: "webos/capture.dump" }
   | { kind: "webos/inject.arm"; v: 1; pageSessionId: string; context: SystemContext }
-  | { kind: "webos/inject.disarm"; v: 1; pageSessionId: string; target: "persona" | "memory" | "all" };
+  | { kind: "webos/inject.disarm"; v: 1; pageSessionId: string; target: "persona" | "memory" | "all" }
+  | { kind: "webos/memory.set-capture"; v: 1; enabled: boolean };
+
+export interface MemoryTranscriptResponse {
+  kind: "webos/memory.transcript.result";
+  transcript: string;
+  turns: number;
+  chars: number;
+  hasUserPrompts: boolean;
+  pageSessionId: string;
+}
 
 export interface ContentResponse {
   kind: "webos/capture.dump.result";

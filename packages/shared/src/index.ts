@@ -5,6 +5,7 @@ export * from "./types/adapter.js";
 export * from "./types/actor.js";
 export * from "./types/memory.js";
 export * from "./memory/format.js";
+export * from "./memory/transcript.js";
 export * from "./protocol/sse.js";
 export * from "./protocol/deepseek.js";
 export * from "./protocol/request-meta.js";

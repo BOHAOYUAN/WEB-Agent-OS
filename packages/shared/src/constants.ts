@@ -44,4 +44,6 @@ export const CHANNELS = {
   routerStorageKey: "webos:router:v1",
   /** Side panel's Actor bridge token (session-scoped storage, cleared on restart). */
   actorTokenStorageKey: "webos:actor:token:v1",
+  /** Opt-in user-prompt capture flag (local storage, persists across restarts until cleared). */
+  memoryCaptureStorageKey: "webos:memory:capture-user:v1",
 } as const;

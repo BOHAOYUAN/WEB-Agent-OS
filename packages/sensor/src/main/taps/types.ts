@@ -26,9 +26,16 @@ export interface TapCallbacks {
   onChunk(requestId: string, chunk: string): void;
   onEnd(requestId: string, reason: TapEndReason): void;
   onError(requestId: string | undefined, code: SensorErrorCode, message: string, fatal: boolean): void;
+  onUserPrompt?(requestId: string, text: string): void;
+}
+
+/** Mutable capture switch shared between the reverse channel and the taps. */
+export interface MemoryCaptureState {
+  enabled: boolean;
 }
 
 export interface TapInstallOptions extends TapCallbacks {
   baseHref?: string;
   injector?: PromptInjector;
+  memoryCapture?: MemoryCaptureState;
 }

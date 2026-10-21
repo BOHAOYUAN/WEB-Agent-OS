@@ -53,6 +53,8 @@ export function isSensorEvent(value: unknown): value is SensorEvent {
         typeof value.message === "string" &&
         typeof value.fatal === "boolean"
       );
+    case "sensor.user.prompt":
+      return typeof value.requestId === "string" && typeof value.text === "string" && typeof value.ts === "number";
     default:
       return false;
   }
@@ -102,6 +104,10 @@ export function isInjectArmMessage(value: unknown): value is BridgeToMainMessage
     return value.v === 1;
   }
   return false;
+}
+
+export function isMemorySetCaptureMessage(value: unknown): value is { kind: "webos/memory.set-capture"; v: 1; enabled: boolean } {
+  return isRecord(value) && value.kind === "webos/memory.set-capture" && value.v === 1 && typeof value.enabled === "boolean";
 }
 
 export type ActorCommandValidation =

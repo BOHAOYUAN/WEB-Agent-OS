@@ -1,8 +1,16 @@
-import { CHANNELS, LIMITS, MAX_MEMORY_INJECT_CHARS, isSensorBatch, isSensorEvent } from "@webos/shared";
+import {
+  CHANNELS,
+  LIMITS,
+  MAX_MEMORY_INJECT_CHARS,
+  buildTranscript,
+  isSensorBatch,
+  isSensorEvent,
+} from "@webos/shared";
 import type {
   CaptureDumpResponse,
   ContentMessage,
   ContentResponse,
+  MemoryTranscriptResponse,
   RuntimeMessage,
   SensorBatch,
   SensorEvent,
@@ -22,6 +30,7 @@ interface TabState {
 const tabs = new Map<number, TabState>();
 const ports = new Set<chrome.runtime.Port>();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let captureEnabled = false;
 
 const routerHost = new RouterHost({
   sendArm: (tabId, pageSessionId, context) => {
@@ -36,8 +45,29 @@ const routerHost = new RouterHost({
 
 void readRouterEnabled().then((enabled) => routerHost.setEnabled(enabled));
 
+function writeCapture(enabled: boolean): void {
+  captureEnabled = enabled;
+  void chrome.storage.local.set({ [CHANNELS.memoryCaptureStorageKey]: enabled }).catch(() => undefined);
+}
+
+function readCapture(): Promise<boolean> {
+  return chrome.storage.local
+    .get(CHANNELS.memoryCaptureStorageKey)
+    .then((stored) => {
+      const value = stored[CHANNELS.memoryCaptureStorageKey];
+      return typeof value === "boolean" ? value : false;
+    })
+    .catch(() => false);
+}
+
+void readCapture().then((enabled) => {
+  captureEnabled = enabled;
+});
+
 function eventWeight(event: SensorEvent): number {
-  return event.type === "sensor.text.delta" ? event.text.length : 1;
+  if (event.type === "sensor.text.delta") return event.text.length;
+  if (event.type === "sensor.user.prompt") return event.text.length;
+  return 1;
 }
 
 function isAllowedUrl(raw: string | undefined): boolean {
@@ -311,6 +341,53 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     };
     chrome.tabs.sendMessage(msg.tabId, message).catch(() => undefined);
     sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.kind === "webos/memory.capture.set") {
+    if (!Number.isInteger(msg.tabId) || typeof msg.enabled !== "boolean") {
+      sendResponse({ ok: false, error: "bad args" });
+      return false;
+    }
+    writeCapture(msg.enabled);
+    const message: ContentMessage = { kind: "webos/memory.set-capture", v: 1, enabled: msg.enabled };
+    chrome.tabs.sendMessage(msg.tabId, message).catch(() => undefined);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.kind === "webos/memory.capture.get") {
+    sendResponse({ enabled: captureEnabled });
+    return false;
+  }
+
+  if (msg.kind === "webos/memory.transcript.request") {
+    const empty: MemoryTranscriptResponse = {
+      kind: "webos/memory.transcript.result",
+      transcript: "",
+      turns: 0,
+      chars: 0,
+      hasUserPrompts: false,
+      pageSessionId: "",
+    };
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse(empty);
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (!state) {
+      sendResponse(empty);
+      return false;
+    }
+    const result = buildTranscript(state.events);
+    sendResponse({
+      kind: "webos/memory.transcript.result",
+      transcript: result.transcript,
+      turns: result.turns,
+      chars: result.chars,
+      hasUserPrompts: result.hasUserPrompts,
+      pageSessionId: state.pageSessionId,
+    } satisfies MemoryTranscriptResponse);
     return false;
   }
 

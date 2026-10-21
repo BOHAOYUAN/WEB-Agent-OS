@@ -1,8 +1,9 @@
 import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
-import type { ActorResult, CaptureDumpResponse, UiMessage } from "@webos/shared";
+import type { ActorResult, CaptureDumpResponse, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
 import { mountDebugPanel } from "@webos/ui";
 import { ActorClient, nextCommandId } from "./actor-client.js";
 import { mountActorPanel, type ActorPanel } from "./actor-ui.js";
+import type { TranscriptLoadResult } from "./actor-ui.js";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("side panel root element is missing");
@@ -95,6 +96,24 @@ function summarize(transcript: string): Promise<ActorResult> {
   });
 }
 
+async function getActiveTabId(): Promise<number> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id) throw new Error("找不到活动标签页");
+  return tab.id;
+}
+
+async function loadTranscript(): Promise<TranscriptLoadResult> {
+  const tabId = await getActiveTabId();
+  const response = await sendRuntime<MemoryTranscriptResponse>({ kind: "webos/memory.transcript.request", tabId });
+  if (response.kind !== "webos/memory.transcript.result") throw new Error("读取对话失败");
+  return {
+    transcript: response.transcript,
+    turns: response.turns,
+    chars: response.chars,
+    hasUserPrompts: response.hasUserPrompts,
+  };
+}
+
 function saveActorToken(token: string): void {
   actor?.disconnect();
   actor = token
@@ -124,7 +143,17 @@ async function initActorPanel(): Promise<void> {
     onConnect: () => actor?.connect(),
     onDisconnect: () => actor?.disconnect(),
     onSummarize: summarize,
+    onToggleCapture: (enabled) => {
+      void getActiveTabId()
+        .then((tabId) => sendRuntime({ kind: "webos/memory.capture.set", tabId, enabled }))
+        .catch(() => undefined);
+    },
+    onLoadTranscript: loadTranscript,
   });
+
+  void sendRuntime<{ enabled?: boolean }>({ kind: "webos/memory.capture.get" })
+    .then((state) => actorPanel?.setCaptureEnabled(state.enabled === true))
+    .catch(() => undefined);
 
   if (token) {
     actor = new ActorClient({

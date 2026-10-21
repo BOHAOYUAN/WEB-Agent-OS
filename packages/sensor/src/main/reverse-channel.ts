@@ -1,9 +1,10 @@
-import { isBridgeToMainEnvelope, isInjectArmMessage } from "@webos/shared";
+import { isBridgeToMainEnvelope, isInjectArmMessage, isMemorySetCaptureMessage } from "@webos/shared";
 import type { BridgeToMainMessage, SystemContext } from "@webos/shared";
 
 export interface ReverseChannelHandlers {
   onArm(version: number, context: SystemContext): void;
   onDisarm(): void;
+  onSetCapture(enabled: boolean): void;
 }
 
 export interface ReverseChannelScope {
@@ -36,11 +37,12 @@ export function installReverseChannel(options: ReverseChannelOptions, handlers: 
       if (event.source !== globals.window || event.origin !== globals.location.origin) return;
       if (!isBridgeToMainEnvelope(event.data) || event.data.nonce !== nonce) return;
       const message = event.data.message as BridgeToMainMessage;
-      if (!isInjectArmMessage(message)) return;
-      if (message.kind === "webos/inject.arm") {
+      if (message.kind === "webos/inject.arm" && isInjectArmMessage(message)) {
         handlers.onArm(message.version, message.context);
-      } else {
+      } else if (message.kind === "webos/inject.disarm") {
         handlers.onDisarm();
+      } else if (message.kind === "webos/memory.set-capture" && isMemorySetCaptureMessage(message)) {
+        handlers.onSetCapture(message.enabled);
       }
     } catch {
       // Never break the page on a malformed message.

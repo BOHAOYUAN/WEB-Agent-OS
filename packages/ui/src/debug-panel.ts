@@ -196,6 +196,7 @@ export function mountDebugPanel(root: HTMLElement, options: DebugPanelOptions): 
         else if (event.type === "sensor.stream.meta")
           detail.textContent = `request=${String(event.requestMessageId ?? "-")} response=${String(event.responseMessageId ?? "-")}`;
         else if (event.type === "sensor.stream.end") detail.textContent = event.reason;
+        else if (event.type === "sensor.user.prompt") detail.textContent = `用户：${event.text}`;
         else detail.textContent = `${event.code}${event.fatal ? " (fatal)" : ""} ${event.message}`;
         row.append(stamp, type, detail);
         eventList.append(row);

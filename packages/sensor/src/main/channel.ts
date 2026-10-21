@@ -12,6 +12,7 @@ export interface SensorChannel {
   chunk(requestId: string, chunk: string): void;
   end(requestId: string, reason: "aborted" | "transport-closed" | "error"): void;
   tapError(requestId: string | undefined, code: SensorErrorCode, message: string, fatal: boolean): void;
+  userPrompt(requestId: string, text: string): void;
 }
 
 function ensureDataset(key: string): string {
@@ -72,6 +73,10 @@ export function createChannel(): SensorChannel {
       };
       if (requestId !== undefined) payload.requestId = requestId;
       post(payload, nonce);
+    },
+    userPrompt(requestId, text): void {
+      if (!text) return;
+      post({ kind: "webos/memory.user-prompt", v: 1, pageSessionId, requestId, text, ts: Date.now() }, nonce);
     },
   };
 }
