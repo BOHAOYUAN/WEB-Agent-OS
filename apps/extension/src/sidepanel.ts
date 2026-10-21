@@ -1,5 +1,8 @@
-import type { CaptureDumpResponse, UiMessage } from "@webos/shared";
+import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
+import type { ActorResult, CaptureDumpResponse, UiMessage } from "@webos/shared";
 import { mountDebugPanel } from "@webos/ui";
+import { ActorClient, nextCommandId } from "./actor-client.js";
+import { mountActorPanel, type ActorPanel } from "./actor-ui.js";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("side panel root element is missing");
@@ -71,3 +74,64 @@ window.addEventListener("unload", () => {
     // ignore
   }
 });
+
+// --- Actor bridge (local memory-summary) ---
+// The WS client lives here, in the side panel — not the service worker —
+// because the panel stays open for the whole interaction. The token is stored
+// in session-scoped extension storage (browser restart clears it) and never logged.
+
+const actorRoot = document.getElementById("actor-root");
+let actor: ActorClient | null = null;
+let actorPanel: ActorPanel | null = null;
+
+function summarize(transcript: string): Promise<ActorResult> {
+  if (!actor) return Promise.reject(new Error("未配置 token"));
+  return actor.send({
+    v: ACTOR_PROTOCOL_VERSION,
+    id: nextCommandId(),
+    kind: "memory-summary",
+    transcript,
+    timeoutMs: 30_000,
+  });
+}
+
+function saveActorToken(token: string): void {
+  actor?.disconnect();
+  actor = token
+    ? new ActorClient({
+        token,
+        onStateChange: (state, detail) => actorPanel?.setState(state, detail),
+      })
+    : null;
+  void chrome.storage.session.set({ [CHANNELS.actorTokenStorageKey]: token }).catch(() => undefined);
+}
+
+async function initActorPanel(): Promise<void> {
+  if (!actorRoot) return;
+  let token = "";
+  try {
+    const stored = await chrome.storage.session.get(CHANNELS.actorTokenStorageKey);
+    const value = stored[CHANNELS.actorTokenStorageKey];
+    if (typeof value === "string") token = value;
+  } catch {
+    // ignore
+  }
+
+  actorPanel = mountActorPanel(actorRoot, {
+    initialToken: token,
+    extensionId: chrome.runtime.id,
+    onSaveToken: saveActorToken,
+    onConnect: () => actor?.connect(),
+    onDisconnect: () => actor?.disconnect(),
+    onSummarize: summarize,
+  });
+
+  if (token) {
+    actor = new ActorClient({
+      token,
+      onStateChange: (state, detail) => actorPanel?.setState(state, detail),
+    });
+  }
+}
+
+void initActorPanel();

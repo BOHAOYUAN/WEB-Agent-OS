@@ -16,5 +16,8 @@ export default defineConfig({
     environment: "node",
     include: ["packages/**/test/**/*.test.ts", "apps/**/test/**/*.test.ts"],
     reporters: "default",
+    // Serialize test files: vitest's shared-module transform cache is written
+    // concurrently by workers, which trips a sandboxed-fs EPERM on Windows.
+    fileParallelism: false,
   },
 });

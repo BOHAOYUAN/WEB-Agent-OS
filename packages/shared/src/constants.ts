@@ -42,4 +42,6 @@ export const CHANNELS = {
   uiPort: "webos:ui",
   storageKey: "webos:ring:v1",
   routerStorageKey: "webos:router:v1",
+  /** Side panel's Actor bridge token (session-scoped storage, cleared on restart). */
+  actorTokenStorageKey: "webos:actor:token:v1",
 } as const;

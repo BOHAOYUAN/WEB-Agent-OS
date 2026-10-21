@@ -36,6 +36,10 @@ const forbidden = [
     dir: "apps/extension/src",
     patterns: ["fetch(", "XMLHttpRequest", "WebSocket", "document.cookie", "localStorage"],
     why: "service worker and side panel must not perform network I/O or read credentials",
+    // The one sanctioned exception: actor-client.ts opens a WebSocket to the
+    // LOCAL Actor bridge on 127.0.0.1 only. It is excluded from this broad scan
+    // and held to a stricter host contract by a dedicated check below.
+    exclude: ["actor-client.ts"],
   },
   {
     dir: "packages/ui/src",
@@ -87,11 +91,37 @@ for (const [pkg, allowed] of Object.entries(allowedDependencies)) {
 
 for (const rule of forbidden) {
   for (const file of await walk(join(root, rule.dir))) {
+    if (rule.exclude?.some((name) => file.endsWith(name))) continue;
     const source = await readFile(file, "utf8");
     for (const pattern of rule.patterns) {
       if (source.includes(pattern)) {
         problems.push(relative(root, file) + ": forbidden token '" + pattern + "' — " + rule.why);
       }
+    }
+  }
+}
+
+// actor-client.ts is the sole sanctioned WebSocket user. Hold it to a stricter
+// contract: it may only dial 127.0.0.1 and must never log the token.
+{
+  const actorClient = join(root, "apps", "extension", "src", "actor-client.ts");
+  let source = "";
+  try {
+    source = await readFile(actorClient, "utf8");
+  } catch {
+    source = "";
+  }
+  if (source) {
+    for (const match of source.matchAll(/wss?:\/\/([0-9a-zA-Z.-]+)/g)) {
+      const host = match[1];
+      if (host !== "127.0.0.1") {
+        problems.push(
+          relative(root, actorClient) + ": actor-client dials non-local host '" + host + "' — must be 127.0.0.1 only",
+        );
+      }
+    }
+    if (/console\.(?:log|debug|info|warn|error)\([^)]*token/i.test(source)) {
+      problems.push(relative(root, actorClient) + ": actor-client must never log the token");
     }
   }
 }
