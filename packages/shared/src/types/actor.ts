@@ -7,6 +7,8 @@
  * structured memory without guessing at the shape.
  */
 
+import type { MemorySource, MemoryStoreSnapshot, SavedMemoryEntry } from "./memory.js";
+
 export const ACTOR_PROTOCOL_VERSION = 2 as const;
 
 /** Hard limits enforced by `validateActorCommand` on every inbound command. */
@@ -48,6 +50,30 @@ export type ActorCommand =
       kind: "memory-summary";
       transcript: string;
       timeoutMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      kind: "memory-store";
+      action: "save";
+      memory: MemorySummary;
+      model: string;
+      source?: MemorySource;
+      timeoutMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      kind: "memory-store";
+      action: "get";
+      timeoutMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      kind: "memory-store";
+      action: "clear";
+      timeoutMs: number;
     };
 
 /** Error codes an Actor command can fail with. */
@@ -57,7 +83,8 @@ export type ActorErrorCode =
   | "spawn-failed"
   | "ollama-unavailable"
   | "ollama-timeout"
-  | "invalid-json";
+  | "invalid-json"
+  | "memory-io";
 
 /**
  * Result of an Actor command. Success branches are keyed by `kind` so the UI
@@ -81,6 +108,30 @@ export type ActorResult =
       memory: MemorySummary;
       model: string;
       elapsedMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      ok: true;
+      kind: "memory-store";
+      action: "save";
+      entry: SavedMemoryEntry;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      ok: true;
+      kind: "memory-store";
+      action: "get";
+      snapshot: MemoryStoreSnapshot;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      ok: true;
+      kind: "memory-store";
+      action: "clear";
+      cleared: true;
     }
   | {
       v: typeof ACTOR_PROTOCOL_VERSION;

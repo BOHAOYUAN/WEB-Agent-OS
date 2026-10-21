@@ -1,7 +1,7 @@
 import { LIMITS } from "../constants.js";
 import type { SensorEvent } from "../types/events.js";
 import type { BridgeToMainEnvelope, BridgeToMainMessage, MainEnvelope, SensorBatch } from "../types/messages.js";
-import { isSystemContext } from "../types/memory.js";
+import { isMemorySource, isMemorySummary, isSystemContext } from "../types/memory.js";
 import { ACTOR_LIMITS, ACTOR_PROTOCOL_VERSION } from "../types/actor.js";
 import type { ActorCommand } from "../types/actor.js";
 
@@ -140,6 +140,19 @@ export function validateActorCommand(value: unknown): ActorCommandValidation {
     if (typeof value.transcript !== "string" || value.transcript.length === 0) return { ok: false, reason: "missing transcript" };
     if (value.transcript.length > ACTOR_LIMITS.maxTranscriptChars) return { ok: false, reason: "transcript too large" };
     return { ok: true, command: value as ActorCommand };
+  }
+
+  if (value.kind === "memory-store") {
+    if (value.action === "save") {
+      if (!isMemorySummary(value.memory)) return { ok: false, reason: "invalid memory" };
+      if (typeof value.model !== "string" || value.model.length === 0) return { ok: false, reason: "missing model" };
+      if (value.source !== undefined && !isMemorySource(value.source)) return { ok: false, reason: "invalid source" };
+      return { ok: true, command: value as ActorCommand };
+    }
+    if (value.action === "get" || value.action === "clear") {
+      return { ok: true, command: value as ActorCommand };
+    }
+    return { ok: false, reason: "unknown memory-store action" };
   }
 
   return { ok: false, reason: "unknown command kind" };

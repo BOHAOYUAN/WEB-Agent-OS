@@ -301,6 +301,59 @@ describe("Actor CLI smoke (deterministic, fake Ollama)", () => {
   }, 30000);
 });
 
+describe("Actor CLI memory-store round-trip (deterministic, no Ollama)", () => {
+  let cli: CliHandle;
+  let memDir = "";
+
+  beforeAll(async () => {
+    memDir = await mkdtemp(join(tmpdir(), "webos-mem-"));
+    cli = await startCli(["--memory-path", join(memDir, "memory.json")]);
+  }, 30000);
+
+  afterAll(async () => {
+    await cli.stop();
+    if (memDir) await rm(memDir, { recursive: true, force: true });
+  });
+
+  it("saves, reads back, and clears a memory entry", async () => {
+    const save = await sendCommand(cli.port, cli.token, {
+      v: ACTOR_PROTOCOL_VERSION,
+      id: "mem-1",
+      kind: "memory-store",
+      action: "save",
+      memory: FIXED_MEMORY,
+      model: "qwen2.5:3b",
+      timeoutMs: 5000,
+    });
+    expect(save.ok).toBe(true);
+    if (save.ok && save.kind === "memory-store" && save.action === "save") {
+      expect(save.entry.memory).toEqual(FIXED_MEMORY);
+    }
+
+    const get = await sendCommand(cli.port, cli.token, {
+      v: ACTOR_PROTOCOL_VERSION,
+      id: "mem-2",
+      kind: "memory-store",
+      action: "get",
+      timeoutMs: 5000,
+    });
+    expect(get.ok).toBe(true);
+    if (get.ok && get.kind === "memory-store" && get.action === "get") {
+      expect(get.snapshot.entries).toHaveLength(1);
+      expect(get.snapshot.entries[0]?.memory).toEqual(FIXED_MEMORY);
+    }
+
+    const clear = await sendCommand(cli.port, cli.token, {
+      v: ACTOR_PROTOCOL_VERSION,
+      id: "mem-3",
+      kind: "memory-store",
+      action: "clear",
+      timeoutMs: 5000,
+    });
+    expect(clear.ok).toBe(true);
+  }, 30000);
+});
+
 // Real end-to-end against a live local model. Opt-in only: requires Ollama to
 // be running with qwen2.5:3b pulled. Run with `ACTOR_E2E=1 npm run test`.
 describe.skipIf(process.env.ACTOR_E2E !== "1")("Actor CLI real Ollama integration", () => {

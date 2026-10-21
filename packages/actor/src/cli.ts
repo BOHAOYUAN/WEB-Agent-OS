@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createActorServer } from "./transport/server.js";
 import { generateToken } from "./security/token.js";
+import { DEFAULT_MEMORY_PATH } from "./memory/store.js";
 
 const DEFAULT_PORT = 4319;
 const DEFAULT_MODEL = "qwen2.5:3b";
@@ -24,6 +25,7 @@ interface CliOptions {
   endpoint: string;
   model: string;
   cwd: string;
+  memoryPath: string;
   allowOrigins: string[];
   help: boolean;
 }
@@ -38,6 +40,7 @@ function usage(): string {
     "  --ollama-endpoint <url>    Ollama 地址，默认 " + DEFAULT_ENDPOINT,
     "  --ollama-model <name>      Ollama 模型，默认 " + DEFAULT_MODEL,
     "  --cwd <path>               exec 工作目录，默认 ~/.webos-agent/workspace",
+    "  --memory-path <path>       记忆文件路径，默认 " + DEFAULT_MEMORY_PATH,
     "  --allow-origin <origin>    允许的 Origin，可重复（如 chrome-extension://<id>）",
     "  --help                     显示本帮助",
   ].join("\n");
@@ -50,6 +53,7 @@ function parseArgs(argv: string[]): CliOptions {
     endpoint: DEFAULT_ENDPOINT,
     model: DEFAULT_MODEL,
     cwd: join(homedir(), ".webos-agent", "workspace"),
+    memoryPath: DEFAULT_MEMORY_PATH,
     allowOrigins: [],
     help: false,
   };
@@ -65,7 +69,7 @@ function parseArgs(argv: string[]): CliOptions {
     const eq = arg.indexOf("=");
     const key = eq === -1 ? arg : arg.slice(0, eq);
     const inline = eq === -1 ? undefined : arg.slice(eq + 1);
-    const needsValue = ["--port", "--token", "--ollama-endpoint", "--ollama-model", "--cwd", "--allow-origin"].includes(key);
+    const needsValue = ["--port", "--token", "--ollama-endpoint", "--ollama-model", "--cwd", "--memory-path", "--allow-origin"].includes(key);
     const value = inline ?? (key === "--help" ? undefined : needsValue ? next() : undefined);
 
     switch (key) {
@@ -83,6 +87,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--cwd":
         opts.cwd = value as string;
+        break;
+      case "--memory-path":
+        opts.memoryPath = value as string;
         break;
       case "--allow-origin":
         opts.allowOrigins.push(value as string);
@@ -124,6 +131,7 @@ async function main(): Promise<void> {
     allowedOrigins: opts.allowOrigins,
     exec: { cwd },
     ollama: { endpoint: opts.endpoint, model: opts.model },
+    memoryPath: opts.memoryPath,
   });
 
   // Startup banner is the ONLY place the token is printed, so the user can copy
@@ -133,6 +141,7 @@ async function main(): Promise<void> {
   console.log("[actor] allow-origin: " + (opts.allowOrigins.length ? opts.allowOrigins.join(",") : "(none)"));
   console.log("[actor] ollama: " + opts.endpoint + " model=" + opts.model);
   console.log("[actor] cwd: " + cwd);
+  console.log("[actor] memory: " + opts.memoryPath);
   console.log("[actor] listening on 127.0.0.1:" + server.port);
 
   const shutdown = async (): Promise<void> => {

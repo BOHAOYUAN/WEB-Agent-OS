@@ -26,13 +26,10 @@ import { Heartbeat } from "./heartbeat.js";
 import { ReusableToken } from "../security/token.js";
 import { evaluateCommand } from "../security/command-policy.js";
 import { executeCommand, type ExecutionOptions } from "../exec/runner.js";
-import { summarizeTranscript } from "../memory/summarize.js";
+import { handleMemoryStore, handleMemorySummary, type SummarizeConfig } from "../memory/builtin.js";
+import { MemoryStore } from "../memory/store.js";
 
-/** Local Ollama configuration for the builtin `memory-summary` command. */
-export interface SummarizeConfig {
-  endpoint?: string;
-  model?: string;
-}
+export type { SummarizeConfig } from "../memory/builtin.js";
 
 export interface ActorServerOptions {
   /** Origins allowed to connect (e.g. the extension's origin). */
@@ -47,6 +44,8 @@ export interface ActorServerOptions {
   exec?: Partial<ExecutionOptions>;
   /** Local Ollama config for the memory-summary builtin. */
   ollama?: SummarizeConfig;
+  /** Override the on-disk memory store path (defaults to ~/.webos-agent/memory.json). */
+  memoryPath?: string;
   /** Heartbeat tuning. */
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
   /** Command handler override (for tests). Defaults to local execution. */
@@ -86,6 +85,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
   const reusable = new ReusableToken(options.token);
   const exec: ExecutionOptions = { ...DEFAULT_EXEC, ...options.exec };
   const log = options.log ?? (() => undefined);
+  const store = new MemoryStore({ path: options.memoryPath });
 
   const connections = new Set<LiveConnection>();
 
@@ -145,6 +145,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
       exec,
       log,
       ollama: options.ollama,
+      store,
       onCommand: options.onCommand,
       heartbeat: options.heartbeat,
     });
@@ -181,6 +182,7 @@ interface AttachOptions {
   exec: ExecutionOptions;
   log: (line: string) => void;
   ollama?: SummarizeConfig;
+  store: MemoryStore;
   onCommand?: (command: ActorCommand) => Promise<ActorResult>;
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
 }
@@ -251,7 +253,7 @@ async function handleMessage(
   if (options.onCommand) {
     result = await options.onCommand(command);
   } else {
-    result = await defaultCommandHandler(command, options.exec, options.ollama);
+    result = await defaultCommandHandler(command, options.exec, options.ollama, options.store);
   }
   sendResult(socket, result);
 }
@@ -260,9 +262,13 @@ async function defaultCommandHandler(
   command: ActorCommand,
   exec: ExecutionOptions,
   ollama?: SummarizeConfig,
+  store?: MemoryStore,
 ): Promise<ActorResult> {
   if (command.kind === "memory-summary") {
     return handleMemorySummary(command, ollama);
+  }
+  if (command.kind === "memory-store") {
+    return handleMemoryStore(command, store ?? new MemoryStore());
   }
   return handleExec(command, exec);
 }
@@ -308,33 +314,6 @@ async function handleExec(
     ok: false,
     code: "denied",
     message: `command exited with code ${exitCode}`,
-  };
-}
-
-async function handleMemorySummary(
-  command: Extract<ActorCommand, { kind: "memory-summary" }>,
-  ollama?: SummarizeConfig,
-): Promise<ActorResult> {
-  // Builtin capability: internal function call to local Ollama — it never
-  // spawns a shell and never goes through the command allowlist.
-  const result = await summarizeTranscript({
-    transcript: command.transcript,
-    timeoutMs: command.timeoutMs,
-    endpoint: ollama?.endpoint,
-    model: ollama?.model,
-  });
-
-  if (!result.ok) {
-    return { v: ACTOR_PROTOCOL_VERSION, id: command.id, ok: false, code: result.code, message: result.message };
-  }
-  return {
-    v: ACTOR_PROTOCOL_VERSION,
-    id: command.id,
-    ok: true,
-    kind: "memory-summary",
-    memory: result.memory,
-    model: result.model,
-    elapsedMs: result.elapsedMs,
   };
 }
 

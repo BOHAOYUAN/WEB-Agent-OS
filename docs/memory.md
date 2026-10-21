@@ -1,7 +1,31 @@
-# 本地记忆总结（原型）
+# 本地记忆总结与记忆系统
 
 > 目标：用**本地小模型**把一段对话压缩成结构化长期记忆，不消耗 DeepSeek 免费额度，也不把对话发到云端。
-> 当前状态：**独立脚本原型，尚未接入 Router / Actor / UI。**
+> 当前状态：**已从独立脚本升级为 Actor 内置能力，并打通 extension 侧「捕获 → 总结 → 保存 → 注入下一轮」闭环**（Stage 2A/2B/2C 完成）。
+
+## 0. 已落地的闭环（Stage 2）
+
+```
+DeepSeek 页面
+  │ XHR/fetch（opt-in 捕获用户提问）
+  ▼
+MAIN sensor taps → sensor.user.prompt 事件
+  ▼
+bridge → SW ring buffer（含 user turns）
+  ▼
+sidepanel「读取当前对话」→ transcript
+  ▼「总结当前对话」
+Actor memory-summary（Ollama 127.0.0.1:11434）
+  ▼ 预览 → 用户点「保存到记忆」
+Actor memory-store（原子写 ~/.webos-agent/memory.json）
+  ▼「注入下一轮」
+memory.arm → SystemContext 合并（memory → persona 单前缀）→ prompt-inject
+```
+
+- **注入合并**：人设（Router）与记忆合并成单一 `SystemContext`，一次消费/ack，互相不覆盖；固定拼装顺序「记忆 → 人设 → 原文」。
+- **隐私**：用户提问捕获默认关闭，只存 SW 内存 ring buffer；仅结构化摘要落盘；原始 transcript 永不持久化。
+- **质量兜底**：`facts` 只放已确认事实，计划/待办进 `open_loops`（prompt 硬约束 + few-shot + `enforceFactsBoundary` 确定性守卫 + 保存前人工确认）。
+- **存储**：`~/.webos-agent/memory.json`，原子写（tmp+rename）、损坏文件先备份再覆盖、上限 100 条 / 1MB。
 
 ## 1. 模型选择
 
@@ -93,13 +117,12 @@ npm run memory:summary -- --file .tmp-e2e/transcript.json --dry-run
 
 ## 5. 记忆系统还差什么
 
-模型只是“压缩器”，不是记忆系统。完整形态至少需要：
+已落地（Stage 2）：本地摘要、内存存储（Actor memory-store）、opt-in 用户提问捕获、合并注入、保存前人工确认。仍待做：
 
-1. **存储**：原始 turn 落 IndexedDB / Actor SQLite；摘要落单独表，记录 turn range。
-2. **触发**：每 6–8 轮或 4–8K token 触发一次；避免每轮都调用。
-3. **滚动合并**：新摘要与旧摘要合并，避免无限增长；保留可追溯的 source range。
-4. **检索**：embedding（bge-small-zh）+ 关键词，取 top-k 注入下一轮 prompt。
-5. **注入**：与现有 Router 的 prompt 注入共用同一条链路，但要和人设注入分开，避免两个 system 片段打架。
+1. **触发自动化**：目前手动「总结当前对话」；后续可按轮数/字符数自动触发（迁 offscreen document）。
+2. **滚动合并**：新摘要与旧摘要合并，避免无限增长；保留可追溯的 source range。
+3. **检索**：embedding（bge-small-zh）+ 关键词，取 top-k 注入下一轮 prompt。
+4. **多轮指代/工作记忆**：短期工作记忆与长期画像分离。
 
 ## 6. 接入位置（以后）
 

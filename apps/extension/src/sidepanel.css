@@ -314,6 +314,18 @@ body {
   color: var(--muted);
 }
 
+.actor-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.actor-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .actor-transcript {
   display: flex;
   flex-direction: column;

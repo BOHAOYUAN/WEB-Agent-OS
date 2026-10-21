@@ -1,7 +1,7 @@
 # Web-OS-Agent
 
 > 把 AI 网页端变成 Agent 的**外部中间件**。不是 Chrome 插件玩具，而是四层解耦的运行时：
-> **Sensor → Router → Actor → UI**。当前已落地 **Sensor（只读抓流）→ Router（意图 + 人设注入）→ Actor（本地安全执行桥）** 三层。
+> **Sensor → Router → Actor → UI**。当前已落地 **Sensor（只读抓流）→ Router（意图 + 人设注入）→ Actor（本地安全执行桥 + 本地记忆）**，并打通记忆闭环「捕获 → 总结 → 保存 → 注入下一轮」。
 
 [![status](https://img.shields.io/badge/status-P1--P3%20core%20done-3fb950)](#路线图)
 [![license](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
@@ -16,7 +16,7 @@ DeepSeek 等 AI 网页端已经是一个很强的模型入口，但它只是一�
 
 - **Sensor**：可靠、可测试、可诊断地把 DeepSeek 网页端的 completion 流读出来（fetch/XHR 拦截 + SSE 分帧 + 归一化），并且证明它不碰账号鉴权。
 - **Router**：本地规则引擎，识别用户意图并注入对应人设 System Prompt（带开关、`MAX_ITERATIONS` 熔断、失败回退）。
-- **Actor**：本地 Node 执行桥，手写 RFC6455 WebSocket 服务端 + 一次性 token 握手 + 命令白名单（默认拒绝），安全执行本地命令。
+- **Actor**：本地 Node 执行桥，手写 RFC6455 WebSocket 服务端 + 可复用 token 握手 + 命令白名单（默认拒绝），安全执行本地命令；内置本地 Ollama 记忆总结 + 原子写 `memory.json` 记忆存储。
 
 ```text
 DeepSeek 页面 JS

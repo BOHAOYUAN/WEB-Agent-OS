@@ -1,5 +1,5 @@
 import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
-import type { ActorResult, CaptureDumpResponse, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
+import type { ActorResult, CaptureDumpResponse, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
 import { mountDebugPanel } from "@webos/ui";
 import { ActorClient, nextCommandId } from "./actor-client.js";
 import { mountActorPanel, type ActorPanel } from "./actor-ui.js";
@@ -114,6 +114,49 @@ async function loadTranscript(): Promise<TranscriptLoadResult> {
   };
 }
 
+function requireActor(): ActorClient {
+  if (!actor) throw new Error("未配置 token");
+  return actor;
+}
+
+function saveMemory(memory: MemorySummary, model: string): Promise<ActorResult> {
+  return requireActor().send({
+    v: ACTOR_PROTOCOL_VERSION,
+    id: nextCommandId(),
+    kind: "memory-store",
+    action: "save",
+    memory,
+    model,
+    timeoutMs: 10_000,
+  });
+}
+
+function loadMemory(): Promise<ActorResult> {
+  return requireActor().send({
+    v: ACTOR_PROTOCOL_VERSION,
+    id: nextCommandId(),
+    kind: "memory-store",
+    action: "get",
+    timeoutMs: 10_000,
+  });
+}
+
+function clearMemory(): Promise<ActorResult> {
+  return requireActor().send({
+    v: ACTOR_PROTOCOL_VERSION,
+    id: nextCommandId(),
+    kind: "memory-store",
+    action: "clear",
+    timeoutMs: 10_000,
+  });
+}
+
+function injectMemory(text: string): void {
+  void getActiveTabId()
+    .then((tabId) => sendRuntime({ kind: "webos/memory.arm", tabId, text }))
+    .catch(() => undefined);
+}
+
 function saveActorToken(token: string): void {
   actor?.disconnect();
   actor = token
@@ -149,6 +192,10 @@ async function initActorPanel(): Promise<void> {
         .catch(() => undefined);
     },
     onLoadTranscript: loadTranscript,
+    onSaveMemory: saveMemory,
+    onLoadMemory: loadMemory,
+    onClearMemory: clearMemory,
+    onInjectMemory: injectMemory,
   });
 
   void sendRuntime<{ enabled?: boolean }>({ kind: "webos/memory.capture.get" })

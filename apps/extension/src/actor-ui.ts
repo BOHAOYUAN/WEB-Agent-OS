@@ -1,12 +1,13 @@
 /**
- * Side-panel UI for the local Actor bridge (memory-summary capability).
+ * Side-panel UI for the local Actor bridge (memory-summary + memory store).
  *
  * Pure DOM, no network I/O — the actual WS socket lives in actor-client.ts.
  * The panel is driven by callbacks; the connection state is pushed in from the
  * owning sidepanel.ts via `setState`.
  */
 
-import type { ActorResult } from "@webos/shared";
+import { MAX_MEMORY_INJECT_CHARS, formatMemoryForPrompt } from "@webos/shared";
+import type { ActorResult, MemorySummary } from "@webos/shared";
 import type { ActorState } from "./actor-client.js";
 
 export interface TranscriptLoadResult {
@@ -27,6 +28,10 @@ export interface ActorPanelOptions {
   onSummarize: (transcript: string) => Promise<ActorResult>;
   onToggleCapture: (enabled: boolean) => void;
   onLoadTranscript: () => Promise<TranscriptLoadResult>;
+  onSaveMemory: (memory: MemorySummary, model: string) => Promise<ActorResult>;
+  onLoadMemory: () => Promise<ActorResult>;
+  onClearMemory: () => Promise<ActorResult>;
+  onInjectMemory: (text: string) => void;
 }
 
 export interface ActorPanel {
@@ -42,7 +47,6 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
 
   const header = document.createElement("div");
   header.className = "actor-header";
-
   const titleBox = document.createElement("div");
   titleBox.className = "actor-titlebox";
   const title = document.createElement("div");
@@ -117,15 +121,72 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   summarizeButton.textContent = "总结当前对话";
   summarizeButton.disabled = true;
 
+  const preview = document.createElement("div");
+  preview.className = "actor-preview";
+  preview.hidden = true;
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "actor-label";
+  previewLabel.textContent = "记忆预览（将注入下一轮）";
+  const previewText = document.createElement("pre");
+  previewText.className = "actor-result";
+  const previewStats = document.createElement("div");
+  previewStats.className = "actor-stats";
+  preview.append(previewLabel, previewText, previewStats);
+
+  const opsRow = document.createElement("div");
+  opsRow.className = "actor-ops";
+  const saveMemoryButton = document.createElement("button");
+  saveMemoryButton.className = "ws-button";
+  saveMemoryButton.textContent = "保存到记忆";
+  const injectButton = document.createElement("button");
+  injectButton.className = "ws-button";
+  injectButton.textContent = "注入下一轮";
+  const loadMemoryButton = document.createElement("button");
+  loadMemoryButton.className = "ws-button ws-button-ghost";
+  loadMemoryButton.textContent = "读取已保存记忆";
+  const clearMemoryButton = document.createElement("button");
+  clearMemoryButton.className = "ws-button ws-button-ghost";
+  clearMemoryButton.textContent = "清空记忆";
+  opsRow.append(saveMemoryButton, injectButton, loadMemoryButton, clearMemoryButton);
+
   const result = document.createElement("pre");
   result.className = "actor-result";
   result.textContent = "（尚未生成记忆）";
 
-  card.append(header, tokenRow, controls, originRow, captureRow, transcriptBox, transcriptActions, summarizeButton, result);
+  card.append(
+    header,
+    tokenRow,
+    controls,
+    originRow,
+    captureRow,
+    transcriptBox,
+    transcriptActions,
+    summarizeButton,
+    preview,
+    opsRow,
+    result,
+  );
   root.replaceChildren(card);
 
   let connected = false;
   let disposed = false;
+  let lastMemory: MemorySummary | null = null;
+  let lastModel: string | null = null;
+
+  const updatePreview = (): void => {
+    if (!lastMemory) {
+      preview.hidden = true;
+      injectButton.disabled = true;
+      saveMemoryButton.disabled = true;
+      return;
+    }
+    const text = formatMemoryForPrompt(lastMemory);
+    previewText.textContent = text;
+    previewStats.textContent = `${text.length} / ${MAX_MEMORY_INJECT_CHARS} 字符`;
+    preview.hidden = false;
+    injectButton.disabled = false;
+    saveMemoryButton.disabled = !connected;
+  };
 
   const setState = (state: ActorState, detail: string): void => {
     connected = state === "connected";
@@ -139,6 +200,9 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     status.dataset.kind = state === "connected" ? "ok" : state === "error" ? "warn" : "idle";
     connectButton.textContent = connected ? "断开" : "连接";
     summarizeButton.disabled = !connected;
+    saveMemoryButton.disabled = !connected || !lastMemory;
+    loadMemoryButton.disabled = !connected;
+    clearMemoryButton.disabled = !connected;
   };
 
   saveButton.addEventListener("click", () => {
@@ -161,11 +225,10 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
       .onLoadTranscript()
       .then((loaded) => {
         transcriptArea.value = loaded.transcript;
-        transcriptStats.textContent = `${loaded.turns} 轮 · ${loaded.chars} 字符${loaded.hasUserPrompts ? "" : " · 无用户提问"} `;
         if (loaded.transcript.length === 0) {
           transcriptStats.textContent = "（没有可读取的对话，请先开启捕获并发送消息）";
-        } else if (!loaded.hasUserPrompts) {
-          transcriptStats.textContent += "（仅助手输出，未捕获用户提问）";
+        } else {
+          transcriptStats.textContent = `${loaded.turns} 轮 · ${loaded.chars} 字符${loaded.hasUserPrompts ? "" : " · 无用户提问"}`;
         }
       })
       .catch((error: unknown) => {
@@ -188,12 +251,79 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
       .onSummarize(transcript)
       .then((response) => {
         result.textContent = JSON.stringify(response, null, 2);
+        if (response.ok && response.kind === "memory-summary") {
+          lastMemory = response.memory;
+          lastModel = response.model;
+        } else {
+          lastMemory = null;
+          lastModel = null;
+        }
+        updatePreview();
       })
       .catch((error: unknown) => {
         result.textContent = "总结失败：" + (error instanceof Error ? error.message : String(error));
+        lastMemory = null;
+        lastModel = null;
+        updatePreview();
       })
       .finally(() => {
         if (!disposed) summarizeButton.disabled = !connected;
+      });
+  });
+
+  saveMemoryButton.addEventListener("click", () => {
+    if (!lastMemory || !lastModel) return;
+    saveMemoryButton.disabled = true;
+    result.textContent = "（正在保存…）";
+    void options
+      .onSaveMemory(lastMemory, lastModel)
+      .then((response) => {
+        result.textContent = JSON.stringify(response, null, 2);
+      })
+      .catch((error: unknown) => {
+        result.textContent = "保存失败：" + (error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!disposed) saveMemoryButton.disabled = !connected || !lastMemory;
+      });
+  });
+
+  injectButton.addEventListener("click", () => {
+    if (!lastMemory) return;
+    const text = formatMemoryForPrompt(lastMemory);
+    options.onInjectMemory(text);
+    result.textContent = "已注入下一轮（一次消费，下一轮请求生效；再次注入需重新点击）\n\n" + text;
+  });
+
+  loadMemoryButton.addEventListener("click", () => {
+    loadMemoryButton.disabled = true;
+    result.textContent = "（正在读取…）";
+    void options
+      .onLoadMemory()
+      .then((response) => {
+        result.textContent = JSON.stringify(response, null, 2);
+      })
+      .catch((error: unknown) => {
+        result.textContent = "读取失败：" + (error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!disposed) loadMemoryButton.disabled = !connected;
+      });
+  });
+
+  clearMemoryButton.addEventListener("click", () => {
+    clearMemoryButton.disabled = true;
+    result.textContent = "（正在清空…）";
+    void options
+      .onClearMemory()
+      .then((response) => {
+        result.textContent = JSON.stringify(response, null, 2);
+      })
+      .catch((error: unknown) => {
+        result.textContent = "清空失败：" + (error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!disposed) clearMemoryButton.disabled = !connected;
       });
   });
 
