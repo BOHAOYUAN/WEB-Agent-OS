@@ -46,6 +46,7 @@ async function copyStatic() {
   await copyFile(join(root, manifest), join(dist, "manifest.json"));
   await copyFile(join(root, "apps/extension/src/sidepanel.html"), join(dist, "sidepanel.html"));
   await copyFile(join(root, "apps/extension/src/sidepanel.css"), join(dist, "sidepanel.css"));
+  await copyFile(join(root, "apps/extension/src/artifact-sandbox.html"), join(dist, "artifact-sandbox.html"));
 
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const manifestJson = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));

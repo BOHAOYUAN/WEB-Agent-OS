@@ -2,9 +2,10 @@
  * Artifacts panel — pure DOM, no network, no credential access.
  *
  * Lists fenced code blocks extracted from the current tab's answer stream and
- * lets the user open html/svg artifacts in a sandboxed iframe. The sandbox and
- * CSP come from `renderArtifactSrcdoc` in shared — this panel does no safety
- * judgment of its own, it only assembles DOM and assigns `iframe.srcdoc`.
+ * lets the user open html/svg artifacts in a sandboxed iframe. The sandbox
+ * attribute and srcdoc come from `renderArtifactSrcdoc`; network isolation
+ * comes from the manifest sandbox page CSP. This panel does no safety judgment
+ * of its own, it only assembles DOM and posts the render message.
  *
  * Red lines enforced here:
  *  - code preview always uses `textContent` (never `innerHTML`);
@@ -96,8 +97,21 @@ export function mountArtifactPanel(root: HTMLElement, options: ArtifactPanelOpti
           }
           const iframe = document.createElement("iframe");
           iframe.className = "artifact-iframe";
+          // Render through the manifest sandbox page; setting srcdoc directly
+          // here would inherit the strict extension_pages CSP and block inline
+          // artifact scripts.
           iframe.setAttribute("sandbox", plan.sandbox);
-          iframe.srcdoc = plan.srcdoc;
+          iframe.src = "artifact-sandbox.html";
+          iframe.addEventListener(
+            "load",
+            () => {
+              iframe.contentWindow?.postMessage(
+                { type: "webos/artifact.render", html: plan.srcdoc },
+                "*",
+              );
+            },
+            { once: true },
+          );
           sandboxBox.replaceChildren(iframe);
           openButton.textContent = "关闭沙箱";
         });

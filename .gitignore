@@ -8,5 +8,6 @@ docs/captures/*.txt
 
 # local test scratch dirs
 .tmp-e2e/
+.tmp-chrome-*/
 .tmp-chrome-smoke/
 .workbuddy/

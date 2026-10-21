@@ -2,12 +2,13 @@
  * Artifact extraction + sandbox rendering. Pure functions only — no DOM, no
  * I/O — so the whole sandbox contract is unit-testable in node.
  *
- * The security model is layered and lives entirely here:
+ * The security model is layered:
  *   1. `renderArtifactSrcdoc` only ever emits `sandbox = "allow-scripts"` and
- *      never `allow-same-origin` (opaque origin → no extension access).
- *   2. The srcdoc carries a CSP that forbids all network / external resources.
+ *      never `allow-same-origin` (opaque origin, no extension access).
+ *   2. Fragments carry a meta CSP that forbids network; complete documents are
+ *      returned intact and rely on the manifest sandbox page CSP.
  *   3. Only html/htm/xhtml/svg are renderable; everything else is code-only.
- *   4. The UI must render on explicit user action — nothing here auto-executes.
+ *   4. The UI must render on explicit user action; nothing here auto-executes.
  */
 
 import type { SensorEvent } from "../types/events.js";
@@ -83,6 +84,14 @@ export function renderArtifactSrcdoc(artifact: Artifact): ArtifactRenderPlan {
   }
   if (artifact.code.length > MAX_ARTIFACT_CHARS) {
     return { srcdoc: "", sandbox: "", kind: "code", truncated: true, reason: "too-large" };
+  }
+  // A model can return either a fragment or a complete document. Wrapping a
+  // complete document in another <body> makes the parser treat its <style>/
+  // <script> as text, so keep full documents intact. The manifest sandbox page
+  // supplies the network-blocking CSP for this case; fragments also carry the
+  // meta CSP below as defense in depth.
+  if (/<!doctype|<html[\s>]/i.test(artifact.code)) {
+    return { srcdoc: artifact.code, sandbox: ARTIFACT_SANDBOX, kind: "render", truncated: false };
   }
   const srcdoc = [
     '<!doctype html><html><head><meta charset="utf-8">',

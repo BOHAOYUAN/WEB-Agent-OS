@@ -88,6 +88,15 @@ describe("renderArtifactSrcdoc", () => {
     expect(plan.srcdoc).toContain("Content-Security-Policy");
   });
 
+  it("keeps a complete document intact instead of nesting it in <body>", () => {
+    const full = '<!doctype html><html><head><style>body{color:red}</style></head><body><h1>Hi</h1><script>document.body.dataset.ran="1"</script></body></html>';
+    const plan = renderArtifactSrcdoc(artifact("html", full));
+    expect(plan.kind).toBe("render");
+    expect(plan.sandbox).toBe("allow-scripts");
+    expect(plan.srcdoc).toBe(full);
+    expect(plan.srcdoc).not.toContain("</head><body><!doctype");
+  });
+
   it("renders svg", () => {
     const plan = renderArtifactSrcdoc(artifact("svg", "<svg><circle/></svg>"));
     expect(plan.kind).toBe("render");

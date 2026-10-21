@@ -18,6 +18,13 @@
   "action": {
     "default_title": "Open Web-OS-Agent sensor console"
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; child-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';"
+  },
+  "sandbox": {
+    "pages": ["artifact-sandbox.html"]
+  },
   "side_panel": {
     "default_path": "sidepanel.html"
   },

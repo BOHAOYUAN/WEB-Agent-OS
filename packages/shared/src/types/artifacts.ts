@@ -48,9 +48,9 @@ export const MAX_ARTIFACT_CHARS = 256 * 1024;
 export const ARTIFACT_SANDBOX = "allow-scripts";
 
 /**
- * CSP injected into the srcdoc. No network, no external resources, no nested
- * frames, no form submission, no top navigation. Inline script/style are the
- * only things allowed (model output is inline by construction).
+ * CSP for fragment srcdocs. No network, no external resources, no nested
+ * frames, no form submission, no top navigation. Complete documents are
+ * returned intact and rely on the manifest sandbox page CSP instead.
  */
 export const ARTIFACT_CSP = [
   "default-src 'none'",

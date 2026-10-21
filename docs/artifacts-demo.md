@@ -46,7 +46,7 @@
 
 ## 收尾话术（trade-off，30 秒）
 
-> 「安全是四层：iframe `sandbox="allow-scripts"` 且永不 `allow-same-origin` → opaque origin 摸不到扩展上下文；srcdoc 内 CSP `default-src 'none'` 禁网络外传；只渲染 html/svg，其余只读；用户显式点击才执行。首期不支持 mermaid 渲染（需要外链库，违反无网络红线），列为后续增强。」
+> 「安全是四层：外层 iframe `sandbox="allow-scripts"` 且永不 `allow-same-origin` → opaque origin 摸不到扩展上下文；真正的渲染发生在 manifest sandbox page 的嵌套 iframe 中，sandbox page 的 CSP `default-src 'none'` / `connect-src 'none'` 禁网络外传；只渲染 html/svg，其余只读；用户显式点击才执行。首期不支持 mermaid 渲染（需要外链库，违反无网络红线），列为后续增强。」
 
 ---
 
@@ -54,4 +54,4 @@
 
 - 「读取 Artifacts」报 `message port closed`：扩展没重新加载，`chrome://extensions` 点「重新加载」→ 刷新 DeepSeek → 重试。
 - 列表空：确认当前 tab 是 `chat.deepseek.com` 或 `localhost:4318`，且模型回答里确实含 ``` 围栏代码块。
-- iframe 空白：看侧边栏所在 DevTools Console 的 CSP 报错，确认是 CSP 拦截（预期行为）而非页面自身错误。
+- iframe 空白：先确认扩展已重新加载（manifest 新增 `sandbox` 页需要 reload）；仍空白就看侧边栏 DevTools Console 的 CSP 报错，确认是 CSP 拦截（预期行为）而非页面自身错误。
