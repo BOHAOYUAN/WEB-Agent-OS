@@ -79,7 +79,8 @@ window.addEventListener("unload", () => {
 // --- Actor bridge (local memory-summary) ---
 // The WS client lives here, in the side panel — not the service worker —
 // because the panel stays open for the whole interaction. The token is stored
-// in session-scoped extension storage (browser restart clears it) and never logged.
+// in local extension storage so an autostarted Actor can reconnect after a
+// browser restart; it is loopback-only and never logged.
 
 const actorRoot = document.getElementById("actor-root");
 let actor: ActorClient | null = null;
@@ -183,16 +184,23 @@ function saveActorToken(token: string): void {
         onStateChange: (state, detail) => actorPanel?.setState(state, detail),
       })
     : null;
-  void chrome.storage.session.set({ [CHANNELS.actorTokenStorageKey]: token }).catch(() => undefined);
+  void chrome.storage.local.set({ [CHANNELS.actorTokenStorageKey]: token }).catch(() => undefined);
+  if (actor) actor.connect();
 }
 
 async function initActorPanel(): Promise<void> {
   if (!actorRoot) return;
   let token = "";
   try {
-    const stored = await chrome.storage.session.get(CHANNELS.actorTokenStorageKey);
+    const stored = await chrome.storage.local.get(CHANNELS.actorTokenStorageKey);
     const value = stored[CHANNELS.actorTokenStorageKey];
     if (typeof value === "string") token = value;
+    // Migration from the old session-only location.
+    if (!token) {
+      const session = await chrome.storage.session.get(CHANNELS.actorTokenStorageKey);
+      const legacy = session[CHANNELS.actorTokenStorageKey];
+      if (typeof legacy === "string") token = legacy;
+    }
   } catch {
     // ignore
   }
@@ -225,6 +233,7 @@ async function initActorPanel(): Promise<void> {
       token,
       onStateChange: (state, detail) => actorPanel?.setState(state, detail),
     });
+    actor.connect();
   }
 }
 
