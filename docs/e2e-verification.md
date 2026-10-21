@@ -3,8 +3,6 @@
 > *目标：把*"214 passed + 6 skipped 的单测"变成"真实页面上一次可见的完整流"。  
 > 顺序：**先本地 demo 排障 → 再真实 DeepSeek 见血**。不要跳过第一步。
 
-
-
 ---
 
 ## 0. 一句话结论（成功长什么样）
@@ -78,6 +76,8 @@ Router 是**应答驱动**：它分析的是 DeepSeek **回答流**的文本，�
 
 > 待办（backlog）：给 debug 面板加一个 `router.decision` 事件，让 Router 决策可观测，再补回本节的可视化观察方法。
 
+
+
 ---
 
 ## 5. 如果页面崩了 / 白屏（排查步骤）
@@ -109,23 +109,23 @@ Router 是**应答驱动**：它分析的是 DeepSeek **回答流**的文本，�
 
 ## 7. Stage 2 记忆闭环验收
 
-> **代码验收：ACCEPT PASS（2026-10-22）**
-> 环境：真实 Chrome + 真实扩展 + 真实本地 Actor + 真实 Qwen2.5-3B + 本地合成页面。
+> **代码验收：ACCEPT PASS（2026-10-22）**  
+> 环境：真实 Chrome + 真实扩展 + 真实本地 Actor + 真实 Qwen2.5-3B + 本地合成页面。  
 > **不是真实 DeepSeek 页面**——那一步需用户本人登录，见 7.4。
 
 ### 7.1 主链路验收清单（9 步全 PASS）
 
-| 步骤 | 操作 | 通过标准 |
-|---|---|---|
-| 1 | 勾选「允许捕获用户提问」 | capture.set 生效，content 开始发 `sensor.user.prompt` |
-| 2 | 发送第一条消息 | SW ring buffer 捕获 user prompt |
-| 3 | 「读取当前对话」 | user + assistant 按 requestId 正确配对，turns / chars 正确 |
-| 4 | 「总结当前对话」 | `memory-summary` 返回 `ok:true`，真实本地模型出结构化摘要 |
-| 5 | 预览 | 显示字符数，≤ `MAX_MEMORY_INJECT_CHARS`(600) 上限 |
-| 6 | 「保存到记忆」 | `memory.json` 写入 entry，`source` 非空（`tabId` / `pageSessionId` / `turnCount`） |
-| 7 | 「注入下一轮」+ 第二条消息 | 请求体合并前缀顺序「记忆 → 人设 → 原文」，单前缀、不互相覆盖、一次消费 |
-| 8 | 「读取已保存记忆」 | 读回 entry |
-| 9 | 「清空并停止捕获」 | 磁盘文件删除 + 本地 transcript 清空（0 轮）+ 捕获开关关闭 + 待注入 memory 被 disarm |
+| 步骤 | 操作             | 通过标准                                                                        |
+| -- | -------------- | --------------------------------------------------------------------------- |
+| 1  | 勾选「允许捕获用户提问」   | capture.set 生效，content 开始发 `sensor.user.prompt`                             |
+| 2  | 发送第一条消息        | SW ring buffer 捕获 user prompt                                               |
+| 3  | 「读取当前对话」       | user + assistant 按 requestId 正确配对，turns / chars 正确                          |
+| 4  | 「总结当前对话」       | `memory-summary` 返回 `ok:true`，真实本地模型出结构化摘要                                  |
+| 5  | 预览             | 显示字符数，≤ `MAX_MEMORY_INJECT_CHARS`(600) 上限                                   |
+| 6  | 「保存到记忆」        | `memory.json` 写入 entry，`source` 非空（`tabId` / `pageSessionId` / `turnCount`） |
+| 7  | 「注入下一轮」+ 第二条消息 | 请求体合并前缀顺序「记忆 → 人设 → 原文」，单前缀、不互相覆盖、一次消费                                      |
+| 8  | 「读取已保存记忆」      | 读回 entry                                                                    |
+| 9  | 「清空并停止捕获」      | 磁盘文件删除 + 本地 transcript 清空（0 轮）+ 捕获开关关闭 + 待注入 memory 被 disarm                |
 
 ### 7.2 关键实测证据（真实扩展，非单测推断）
 
