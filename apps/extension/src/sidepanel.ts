@@ -1,5 +1,5 @@
 import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
-import type { ActorResult, CaptureDumpResponse, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
+import type { ActorResult, CaptureDumpResponse, MemorySource, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
 import { mountDebugPanel } from "@webos/ui";
 import { ActorClient, nextCommandId } from "./actor-client.js";
 import { mountActorPanel, type ActorPanel } from "./actor-ui.js";
@@ -111,6 +111,8 @@ async function loadTranscript(): Promise<TranscriptLoadResult> {
     turns: response.turns,
     chars: response.chars,
     hasUserPrompts: response.hasUserPrompts,
+    tabId,
+    pageSessionId: response.pageSessionId,
   };
 }
 
@@ -119,7 +121,7 @@ function requireActor(): ActorClient {
   return actor;
 }
 
-function saveMemory(memory: MemorySummary, model: string): Promise<ActorResult> {
+function saveMemory(memory: MemorySummary, model: string, source: MemorySource): Promise<ActorResult> {
   return requireActor().send({
     v: ACTOR_PROTOCOL_VERSION,
     id: nextCommandId(),
@@ -127,6 +129,7 @@ function saveMemory(memory: MemorySummary, model: string): Promise<ActorResult> 
     action: "save",
     memory,
     model,
+    source,
     timeoutMs: 10_000,
   });
 }
@@ -149,6 +152,21 @@ function clearMemory(): Promise<ActorResult> {
     action: "clear",
     timeoutMs: 10_000,
   });
+}
+
+/**
+ * Full "清空记忆": clear the on-disk store (Actor) AND the local captured
+ * transcript (ring buffer + pending injection + capture toggle). The local part
+ * needs no Actor connection, so it runs first and is best-effort; the Actor
+ * result is returned for the UI to display.
+ */
+async function clearAllMemory(): Promise<ActorResult> {
+  const tabId = await getActiveTabId().catch(() => null);
+  if (tabId !== null) {
+    await sendRuntime({ kind: "webos/memory.clear-captured", tabId }).catch(() => undefined);
+  }
+  actorPanel?.setCaptureEnabled(false);
+  return clearMemory();
 }
 
 function injectMemory(text: string): void {
@@ -194,7 +212,7 @@ async function initActorPanel(): Promise<void> {
     onLoadTranscript: loadTranscript,
     onSaveMemory: saveMemory,
     onLoadMemory: loadMemory,
-    onClearMemory: clearMemory,
+    onClearMemory: clearAllMemory,
     onInjectMemory: injectMemory,
   });
 

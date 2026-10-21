@@ -41,6 +41,15 @@ describe("MemoryStore", () => {
     expect(snapshot.entries[0]?.id).toBe(entry.id);
   });
 
+  it("persists the full provenance source (tabId / pageSessionId / turnCount)", async () => {
+    const store = new MemoryStore({ path: await tempPath() });
+    const source = { tabId: 42, pageSessionId: "session-abc", turnCount: 3 };
+    const entry = await store.save(MEMORY, "qwen2.5:3b", source);
+    expect(entry.source).toEqual(source);
+    const snapshot = await store.load();
+    expect(snapshot.entries[0]?.source).toEqual(source);
+  });
+
   it("clear deletes the file", async () => {
     const store = new MemoryStore({ path: await tempPath() });
     await store.save(MEMORY, "m");

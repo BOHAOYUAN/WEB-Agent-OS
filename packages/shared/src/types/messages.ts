@@ -92,6 +92,7 @@ export type RuntimeMessage =
   | { kind: "webos/memory.disarm"; tabId: number }
   | { kind: "webos/memory.capture.set"; tabId: number; enabled: boolean }
   | { kind: "webos/memory.capture.get" }
+  | { kind: "webos/memory.clear-captured"; tabId: number }
   | { kind: "webos/memory.transcript.request"; tabId: number };
 
 export interface CaptureDumpResponse {

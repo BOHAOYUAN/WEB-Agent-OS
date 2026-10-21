@@ -7,7 +7,7 @@
  */
 
 import { MAX_MEMORY_INJECT_CHARS, formatMemoryForPrompt } from "@webos/shared";
-import type { ActorResult, MemorySummary } from "@webos/shared";
+import type { ActorResult, MemorySource, MemorySummary } from "@webos/shared";
 import type { ActorState } from "./actor-client.js";
 
 export interface TranscriptLoadResult {
@@ -15,6 +15,10 @@ export interface TranscriptLoadResult {
   turns: number;
   chars: number;
   hasUserPrompts: boolean;
+  /** The tab the transcript was read from (for source provenance on save). */
+  tabId: number;
+  /** The page session id the transcript belongs to. */
+  pageSessionId: string;
 }
 
 export interface ActorPanelOptions {
@@ -28,7 +32,7 @@ export interface ActorPanelOptions {
   onSummarize: (transcript: string) => Promise<ActorResult>;
   onToggleCapture: (enabled: boolean) => void;
   onLoadTranscript: () => Promise<TranscriptLoadResult>;
-  onSaveMemory: (memory: MemorySummary, model: string) => Promise<ActorResult>;
+  onSaveMemory: (memory: MemorySummary, model: string, source: MemorySource) => Promise<ActorResult>;
   onLoadMemory: () => Promise<ActorResult>;
   onClearMemory: () => Promise<ActorResult>;
   onInjectMemory: (text: string) => void;
@@ -172,6 +176,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   let disposed = false;
   let lastMemory: MemorySummary | null = null;
   let lastModel: string | null = null;
+  let lastSource: MemorySource | null = null;
 
   const updatePreview = (): void => {
     if (!lastMemory) {
@@ -225,6 +230,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
       .onLoadTranscript()
       .then((loaded) => {
         transcriptArea.value = loaded.transcript;
+        lastSource = { tabId: loaded.tabId, pageSessionId: loaded.pageSessionId, turnCount: loaded.turns };
         if (loaded.transcript.length === 0) {
           transcriptStats.textContent = "（没有可读取的对话，请先开启捕获并发送消息）";
         } else {
@@ -276,7 +282,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     saveMemoryButton.disabled = true;
     result.textContent = "（正在保存…）";
     void options
-      .onSaveMemory(lastMemory, lastModel)
+      .onSaveMemory(lastMemory, lastModel, lastSource ?? {})
       .then((response) => {
         result.textContent = JSON.stringify(response, null, 2);
       })

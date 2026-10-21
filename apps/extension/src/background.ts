@@ -361,6 +361,36 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return false;
   }
 
+  if (msg.kind === "webos/memory.clear-captured") {
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse({ ok: false, error: "bad tab id" });
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (state) {
+      // Drop the whole captured ring for this tab so the transcript is empty.
+      state.events = [];
+      state.chars = 0;
+      state.updatedAt = Date.now();
+      // Clear any pending memory injection for the next turn.
+      const disarmMessage: ContentMessage = {
+        kind: "webos/inject.disarm",
+        v: 1,
+        pageSessionId: state.pageSessionId,
+        target: "memory",
+      };
+      chrome.tabs.sendMessage(msg.tabId, disarmMessage).catch(() => undefined);
+      // Stop capturing user prompts for this tab.
+      const stopCapture: ContentMessage = { kind: "webos/memory.set-capture", v: 1, enabled: false };
+      chrome.tabs.sendMessage(msg.tabId, stopCapture).catch(() => undefined);
+    }
+    writeCapture(false);
+    broadcastSnapshot();
+    schedulePersist();
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (msg.kind === "webos/memory.transcript.request") {
     const empty: MemoryTranscriptResponse = {
       kind: "webos/memory.transcript.result",

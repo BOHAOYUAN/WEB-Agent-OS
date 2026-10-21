@@ -100,3 +100,32 @@ Router 是**应答驱动**：它分析的是 DeepSeek **回答流**的文本，�
 - 只用**自己的** DeepSeek 账号，不碰代登录/多账号/PoW。
 - 不导出真实对话的原始帧外发（调试面板的「导出原始帧」仅 dev 构建有，导出前自查是否含敏感内容）。
 - 不尝试绕过站点的反爬/检测，本项目是"增强"不是"破解"。
+
+---
+
+## 7. Stage 2 记忆闭环验收（已通 + 收尾）
+
+> 状态：主链路在真实 Chrome + 本地 Actor + Qwen2.5-3B 下跑通；P1/P2 两个收尾问题已修复并回归。此节为 Stage 2 的验收清单。
+
+### 7.1 主链路验收清单
+
+| 步骤 | 操作 | 通过标准 |
+|---|---|---|
+| 1 | 勾选「允许捕获用户提问」 | capture.set 生效，content 开始发 `sensor.user.prompt` |
+| 2 | 发送第一条消息 | SW ring buffer 捕获 user prompt |
+| 3 | 「读取当前对话」 | user + assistant 按 requestId 正确配对，turns / chars 正确 |
+| 4 | 「总结当前对话」 | `memory-summary` 返回 `ok:true`，真实本地模型出结构化摘要 |
+| 5 | 预览 | 显示字符数，≤ `MAX_MEMORY_INJECT_CHARS`(600) 上限 |
+| 6 | 「保存到记忆」 | `memory.json` 写入 entry，`source` 非空（`tabId` / `pageSessionId` / `turnCount`） |
+| 7 | 「注入下一轮」+ 第二条消息 | 请求体合并前缀顺序「记忆 → 人设 → 原文」，单前缀、不互相覆盖、一次消费 |
+| 8 | 「读取已保存记忆」 | 读回 entry |
+| 9 | 「清空记忆」 | 磁盘文件删除 + 本地 transcript 清空（0 轮）+ 捕获开关关闭 + 待注入 memory 被 disarm |
+
+### 7.2 收尾修复（P1 / P2）
+
+- **P1 — 清空记忆没清已捕获 transcript**：新增 `webos/memory.clear-captured` 消息。点「清空记忆」除删 `memory.json` 外，同时清空该 tab 的 ring buffer、关闭捕获（`memory.set-capture enabled:false`）、`inject.disarm target:"memory"` 清掉待注入状态；清空后再「读取当前对话」返回 0 轮 / 空。
+- **P2 — 保存的 entry 丢 `source`**：`onSaveMemory(memory, model, source)` 补上 source 入参，sidepanel 把最近一次 transcript 响应的 `{tabId, pageSessionId, turnCount}` 传下并随 `memory-store save` 落盘，溯源不再丢。
+
+### 7.3 回归
+
+`npm run verify` 全绿：typecheck / lint / arch / **213 passed + 6 skipped** / build。新增回归测试：background `clear-captured` 清空后 transcript 为 0 轮；store 保存后 `source` 三字段落盘。
