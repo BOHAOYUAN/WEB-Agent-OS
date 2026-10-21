@@ -12,7 +12,7 @@
  */
 
 import type { SensorEvent } from "../types/events.js";
-import type { Artifact, ArtifactRenderKind, ArtifactRenderPlan } from "../types/artifacts.js";
+import type { Artifact, ArtifactRenderKind, ArtifactRenderPlan, ArtifactScope } from "../types/artifacts.js";
 import { ARTIFACT_CSP, ARTIFACT_SANDBOX, MAX_ARTIFACT_CHARS } from "../types/artifacts.js";
 
 /** Languages that may be rendered inside the sandboxed iframe. */
@@ -28,8 +28,30 @@ function normalizeLanguage(raw: string): string {
 /**
  * Aggregate the answer channel text in stream order, ignoring thinking deltas.
  * Not trimmed, not regrouped by requestId — the answer stream is already ordered.
+ *
+ * `scope` controls which turns are included:
+ *  - `"all"`: every answer delta in the stream (default, backward compatible);
+ *  - `"latest"`: only the most recent turn (the last requestId to emit an
+ *    answer delta) — used so a fresh "读取 Artifacts" shows just the last answer.
  */
-export function buildAnswerText(events: SensorEvent[]): string {
+export function buildAnswerText(events: SensorEvent[], scope: ArtifactScope = "all"): string {
+  if (scope === "latest") {
+    let latestRequestId: string | null = null;
+    for (const event of events) {
+      if (event.type === "sensor.text.delta" && event.channel === "answer") {
+        latestRequestId = event.requestId;
+      }
+    }
+    if (latestRequestId === null) return "";
+    let text = "";
+    for (const event of events) {
+      if (event.type === "sensor.text.delta" && event.channel === "answer" && event.requestId === latestRequestId) {
+        text += event.text;
+      }
+    }
+    return text;
+  }
+
   let text = "";
   for (const event of events) {
     if (event.type === "sensor.text.delta" && event.channel === "answer") {

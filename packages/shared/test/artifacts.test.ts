@@ -30,6 +30,19 @@ describe("buildAnswerText", () => {
   it("returns empty when there are only thinking deltas", () => {
     expect(buildAnswerText([delta("r1", "thinking", "思考")])).toBe("");
   });
+
+  it("scope latest keeps only the most recent turn", () => {
+    const events: SensorEvent[] = [
+      delta("r1", "answer", "第一轮"),
+      delta("r2", "answer", "第二轮"),
+    ];
+    expect(buildAnswerText(events, "latest")).toBe("第二轮");
+    expect(buildAnswerText(events, "all")).toBe("第一轮第二轮");
+  });
+
+  it("scope latest returns empty when no answer delta exists", () => {
+    expect(buildAnswerText([delta("r1", "thinking", "思考")], "latest")).toBe("");
+  });
 });
 
 describe("extractArtifacts", () => {

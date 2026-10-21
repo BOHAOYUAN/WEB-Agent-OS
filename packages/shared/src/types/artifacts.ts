@@ -9,6 +9,9 @@
 /** Whether an artifact is renderable in the sandbox or code-only. */
 export type ArtifactRenderKind = "render" | "code";
 
+/** Scope of the answer stream to extract artifacts from. */
+export type ArtifactScope = "latest" | "all";
+
 /** A single fenced code block extracted from an answer stream. */
 export interface Artifact {
   /** Stable id derived from the index only — never contains user input. */

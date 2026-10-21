@@ -1,5 +1,5 @@
 import { ACTOR_PROTOCOL_VERSION, CHANNELS } from "@webos/shared";
-import type { ActorResult, ArtifactsResponse, CaptureDumpResponse, MemorySource, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
+import type { ActorResult, ArtifactsResponse, ArtifactScope, CaptureDumpResponse, MemorySource, MemorySummary, MemoryTranscriptResponse, UiMessage } from "@webos/shared";
 import { mountArtifactPanel, mountDebugPanel } from "@webos/ui";
 import type { ArtifactsLoadResult } from "@webos/ui";
 import { ActorClient, nextCommandId } from "./actor-client.js";
@@ -118,9 +118,9 @@ async function loadTranscript(): Promise<TranscriptLoadResult> {
   };
 }
 
-async function loadArtifacts(): Promise<ArtifactsLoadResult> {
+async function loadArtifacts(scope: ArtifactScope): Promise<ArtifactsLoadResult> {
   const tabId = await getActiveTabId();
-  const response = await sendRuntime<ArtifactsResponse>({ kind: "webos/artifacts.request", tabId });
+  const response = await sendRuntime<ArtifactsResponse>({ kind: "webos/artifacts.request", tabId, scope });
   if (response.kind !== "webos/artifacts.result") throw new Error("读取 Artifacts 失败");
   return {
     artifacts: response.artifacts,

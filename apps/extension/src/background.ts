@@ -440,7 +440,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       sendResponse(empty);
       return false;
     }
-    const answerText = buildAnswerText(state.events);
+    const answerText = buildAnswerText(state.events, msg.scope ?? "latest");
     sendResponse({
       kind: "webos/artifacts.result",
       artifacts: extractArtifacts(answerText),

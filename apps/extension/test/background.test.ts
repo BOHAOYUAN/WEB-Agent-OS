@@ -173,14 +173,14 @@ describe("background memory clear-captured", () => {
 });
 
 describe("background artifacts.request", () => {
-  function ingestAnswer(text: string): void {
+  function ingestAnswer(text: string, requestId = "r1", pageSessionId = "session-artifacts"): void {
     const batch: SensorBatch = {
       v: 1,
-      pageSessionId: "session-artifacts",
+      pageSessionId,
       seq: 1,
       events: [
-        { type: "sensor.user.prompt", requestId: "r1", text: "写个页面", ts: 0 },
-        { type: "sensor.text.delta", requestId: "r1", channel: "answer", text },
+        { type: "sensor.user.prompt", requestId, text: "写个页面", ts: 0 },
+        { type: "sensor.text.delta", requestId, channel: "answer", text },
       ],
     };
     expect(dispatch({ kind: "webos/sensor.batch", batch })).toEqual({ ok: true });
@@ -198,6 +198,23 @@ describe("background artifacts.request", () => {
     expect(response.answerChars).toBeGreaterThan(0);
     expect(response.artifacts).toHaveLength(1);
     expect(response.artifacts[0]).toMatchObject({ language: "html", code: "<div>hi</div>", kind: "render" });
+  });
+
+  it("defaults to the latest turn, and scope all returns every turn", () => {
+    ingestAnswer('```html\n<div>first</div>\n```\n', "r1", "session-scope");
+    ingestAnswer('```html\n<div>second</div>\n```\n', "r2", "session-scope");
+
+    const latest = dispatch({ kind: "webos/artifacts.request", tabId: TAB_ID }) as {
+      artifacts: Array<{ code: string }>;
+    };
+    expect(latest.artifacts).toHaveLength(1);
+    expect(latest.artifacts[0]?.code).toBe("<div>second</div>");
+
+    const all = dispatch({ kind: "webos/artifacts.request", tabId: TAB_ID, scope: "all" }) as {
+      artifacts: Array<{ code: string }>;
+    };
+    expect(all.artifacts).toHaveLength(2);
+    expect(all.artifacts[0]?.code).toBe("<div>first</div>");
   });
 
   it("returns empty artifacts for a bad tab id", () => {

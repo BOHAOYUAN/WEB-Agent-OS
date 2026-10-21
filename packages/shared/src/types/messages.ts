@@ -1,6 +1,6 @@
 import type { SensorErrorCode, SensorEvent, Transport } from "./events.js";
 import type { SystemContext } from "./memory.js";
-import type { Artifact } from "./artifacts.js";
+import type { Artifact, ArtifactScope } from "./artifacts.js";
 
 export type MainToBridgeMessage =
   | { kind: "webos/sensor.ready"; v: 1; pageSessionId: string }
@@ -95,7 +95,7 @@ export type RuntimeMessage =
   | { kind: "webos/memory.capture.get" }
   | { kind: "webos/memory.clear-captured"; tabId: number }
   | { kind: "webos/memory.transcript.request"; tabId: number }
-  | { kind: "webos/artifacts.request"; tabId: number };
+  | { kind: "webos/artifacts.request"; tabId: number; scope?: ArtifactScope };
 
 export interface CaptureDumpResponse {
   kind: "webos/capture.dump.result";
