@@ -2,11 +2,14 @@ import {
   CHANNELS,
   LIMITS,
   MAX_MEMORY_INJECT_CHARS,
+  buildAnswerText,
   buildTranscript,
+  extractArtifacts,
   isSensorBatch,
   isSensorEvent,
 } from "@webos/shared";
 import type {
+  ArtifactsResponse,
   CaptureDumpResponse,
   ContentMessage,
   ContentResponse,
@@ -418,6 +421,32 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       hasUserPrompts: result.hasUserPrompts,
       pageSessionId: state.pageSessionId,
     } satisfies MemoryTranscriptResponse);
+    return false;
+  }
+
+  if (msg.kind === "webos/artifacts.request") {
+    const empty: ArtifactsResponse = {
+      kind: "webos/artifacts.result",
+      artifacts: [],
+      answerChars: 0,
+      pageSessionId: "",
+    };
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse(empty);
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (!state) {
+      sendResponse(empty);
+      return false;
+    }
+    const answerText = buildAnswerText(state.events);
+    sendResponse({
+      kind: "webos/artifacts.result",
+      artifacts: extractArtifacts(answerText),
+      answerChars: answerText.length,
+      pageSessionId: state.pageSessionId,
+    } satisfies ArtifactsResponse);
     return false;
   }
 

@@ -171,3 +171,48 @@ describe("background memory clear-captured", () => {
     expect(dispatch({ kind: "webos/memory.capture.get" })).toEqual({ enabled: false });
   });
 });
+
+describe("background artifacts.request", () => {
+  function ingestAnswer(text: string): void {
+    const batch: SensorBatch = {
+      v: 1,
+      pageSessionId: "session-artifacts",
+      seq: 1,
+      events: [
+        { type: "sensor.user.prompt", requestId: "r1", text: "写个页面", ts: 0 },
+        { type: "sensor.text.delta", requestId: "r1", channel: "answer", text },
+      ],
+    };
+    expect(dispatch({ kind: "webos/sensor.batch", batch })).toEqual({ ok: true });
+  }
+
+  it("extracts artifacts from the captured answer stream", () => {
+    ingestAnswer('好的：\n```html\n<div>hi</div>\n```\n');
+
+    const response = dispatch({ kind: "webos/artifacts.request", tabId: TAB_ID }) as {
+      kind: string;
+      artifacts: Array<{ language: string; code: string; kind: string }>;
+      answerChars: number;
+    };
+    expect(response.kind).toBe("webos/artifacts.result");
+    expect(response.answerChars).toBeGreaterThan(0);
+    expect(response.artifacts).toHaveLength(1);
+    expect(response.artifacts[0]).toMatchObject({ language: "html", code: "<div>hi</div>", kind: "render" });
+  });
+
+  it("returns empty artifacts for a bad tab id", () => {
+    expect(dispatch({ kind: "webos/artifacts.request", tabId: "nope" })).toMatchObject({
+      kind: "webos/artifacts.result",
+      artifacts: [],
+      answerChars: 0,
+    });
+  });
+
+  it("returns empty artifacts for an unknown tab", () => {
+    expect(dispatch({ kind: "webos/artifacts.request", tabId: 99999 })).toMatchObject({
+      kind: "webos/artifacts.result",
+      artifacts: [],
+      answerChars: 0,
+    });
+  });
+});
