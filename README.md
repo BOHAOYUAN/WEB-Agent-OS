@@ -58,7 +58,7 @@ npm run build      # → dist/
 3. Open `https://chat.deepseek.com`, log in with **your own** account, open the side panel, paste the token.
 4. Send a message. Watch the panel capture the stream; ask for a ```html or ```svg block and open it in the sandbox.
 
-> The token is loopback-only and never logged. The extension reads no cookies, tokens, or anti-bot headers.
+> The token is loopback-only and generated on your machine: the CLI prints it once at startup, it is never written to logs or committed. The extension reads no cookies, tokens, or anti-bot headers.
 
 ## Repository layout
 

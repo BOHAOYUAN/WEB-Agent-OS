@@ -1,7 +1,7 @@
 # Stage 2 验收报告
 
 > 日期：2026-10-22  
-> 代码基线：4618e4e（含 cec7429 的 Actor 崩溃修复）  
+> 代码基线：v0.1.0 前夕的 main（Stage 2 之后合并了 Artifacts 沙箱与跨轮 scope，见第 10 节）  
 > 结论：**本地 E2E 主链路 PASS；真实 DeepSeek 抓流/总结已有用户实测证据；真实 DeepSeek 的保存+注入仍待最后一步。**
 
 ---
@@ -33,7 +33,7 @@ Stage 2 的「捕获 → 读取 → 总结 → 预览 → 保存 → 注入 → 
 | Node | v22.14.0 |
 | 本地模型 | qwen2.5:3b Q4_K_M，Ollama v0.40.7 |
 | 扩展 ID | lcmjomcdgiaegbkjlhajcbflkehdhcmh |
-| Actor | 127.0.0.1:4319，固定 token + Origin 白名单 |
+| Actor | 127.0.0.1:4319，本地生成 token + Origin 白名单 |
 | 测试页面 | 本地合成页（localhost:4318），模拟 XHR completion |
 | 真实页面 | chat.deepseek.com（用户本人账号，用户提供截图） |
 
@@ -44,7 +44,7 @@ Stage 2 的「捕获 → 读取 → 总结 → 预览 → 保存 → 注入 → 
 | 编号 | 测试项 | 方法 | 结果 |
 |---|---|---|---|
 | T1 | typecheck / lint / arch | npm run verify | PASS |
-| T2 | 单元测试 | npm run test | **215 passed / 6 skipped / 30 files** |
+| T2 | 单元测试 | npm run test | **248 passed / 6 skipped / 32 files** |
 | T3 | 扩展构建 | npm run build | PASS |
 | T4 | Sensor 抓流 | 本地 XHR 合成流 | PASS |
 | T5 | transcript 配对 | user + assistant 按 requestId | PASS（1 轮 / 71 字符） |
@@ -68,7 +68,7 @@ npm run verify
 typecheck  ✓
 lint       ✓
 arch       ✓
-test       ✓ 215 passed | 6 skipped (221)
+test       ✓ 248 passed | 6 skipped (254)
 build      ✓ dist/
 ~~~
 
@@ -152,9 +152,11 @@ build      ✓ dist/
 
 | 问题 | 修复 |
 |---|---|
-| Actor 在客户端 TCP reset 时因未处理 ECONNRESET 崩溃 | socket error / clientError 处理 + 回归测试（cec7429） |
-| 重新加载扩展后需要重新粘贴 token | token 改存 chrome.storage.local，侧边栏打开自动连接（4618e4e） |
-| 每次重启需要手动启动 Actor | Windows 登录自启脚本启动 Ollama + Actor（4618e4e） |
+| Actor 在客户端 TCP reset 时因未处理 ECONNRESET 崩溃 | socket error / clientError 处理 + 回归测试（见 fix(actor): 客户端 reset 不再崩溃） |
+| 重新加载扩展后需要重新粘贴 token | token 改存 chrome.storage.local，侧边栏打开自动连接（见 feat(dev): 自启动 + token 持久化） |
+| 每次重启需要手动启动 Actor | Windows 登录自启脚本启动 Ollama + Actor（见 feat(dev): 自启动 + token 持久化） |
+| 固定 token 与绝对路径写死在 autostart 脚本里 | 改为读 %LOCALAPPDATA%\WebOSAgent（首次运行生成 token），仓库不再含密钥和机器路径 |
+| 旧 token 进入 git 历史 | token 已轮换作废；零痕迹流程见 docs/prepublish-checklist.md |
 
 ---
 
@@ -164,7 +166,7 @@ build      ✓ dist/
 2. 3B 记忆质量未做 3 次真实会话评估；
 3. 自动总结（按轮数/字符数）未实现，继续 backlog；
 4. 清空后是否继续捕获是刻意取舍：当前「清空并停止捕获」会关闭捕获；
-5. 多站点、DOM 操控、Artifacts、WebGPU、多智能体均未开始；
+5. 多站点、DOM 操控、WebGPU、多智能体均未开始（Artifacts 沙箱已单独交付，见 docs/artifacts-demo.md）；
 6. 没有真实用户、没有发布。
 
 ---
@@ -174,7 +176,7 @@ build      ✓ dist/
 ### 9.1 自动化
 
 ~~~powershell
-cd E:\project\Web-OS-Agent
+cd <仓库根目录>
 npm ci
 npm run verify
 ~~~
@@ -183,8 +185,8 @@ npm run verify
 
 ~~~powershell
 npm run build
-E:\tools\ollama\start-ollama.cmd
-node dist/actor-cli.js --token ***REDACTED*** --allow-origin chrome-extension://lcmjomcdgiaegbkjlhajcbflkehdhcmh
+# 先启动你自己的 Ollama（ollama serve，或 autostart 脚本）
+node dist/actor-cli.js --allow-origin chrome-extension://<扩展 ID>   # 不带 --token 时自动生成并在启动横幅打印
 npm run demo
 ~~~
 
@@ -206,9 +208,10 @@ npm run demo
 
 ## 10. 下一步
 
-1. 完成真实 DeepSeek 的保存+注入验证；
-2. 3 次真实会话 + 3 条质量问题记录；
+1. 完成真实 DeepSeek 的保存+注入验证（按 docs/real-deepseek-runbook.md 执行，一次 25 分钟）；
+2. 3 次真实会话 + 3 条质量问题记录（同一次会话里的 A/B/C 三组）；
 3. 2 小时 ownership audit；
-4. 决定是否进入 Stage 3（个人 Alpha / Artifacts）。
+4. 公开仓库前跑一遍 docs/prepublish-checklist.md；
+5. 之后才决定要不要做 Stage 3（对话 UI / 多站点）。
 
 **Stage 2 技术闭环已关闭；真实产品闭环尚差用户侧最后一公里。**
