@@ -74,8 +74,22 @@ build      ✓ dist/
 
 说明：
 
-- 6 skipped = 1 条 ACTOR_E2E 真实 smoke + 5 条真实模型质量评测；
-- 另有 memory-quality 测试需要 ACTOR_E2E=1 才跑。
+- 6 skipped = 1 条 ACTOR_E2E 真实 smoke + 5 条真实模型质量评测；两者都由 `ACTOR_E2E=1` 显式打开。
+
+### 4.1 真实模型证据（ACTOR_E2E=1）
+
+~~~powershell
+$env:ACTOR_E2E='1'
+npx vitest run packages/actor/test/cli-smoke.test.ts packages/actor/test/memory-quality.test.ts
+~~~
+
+| 项 | 结果 |
+|---|---|
+| 环境 | Windows + Node v22.14.0 + Ollama 127.0.0.1:11434 + qwen2.5:3b |
+| 用例 | 2 个文件 / **9 passed** |
+| 耗时 | 约 8–10s（cli-smoke ≈5s / memory-quality ≈3s，含模型热启动；两次实测 9.47s / 8.16s） |
+| 覆盖 | 真实 CLI 总结 1 条 + 摘要质量 5 条（计划不进 facts、已完成事实进 facts、待办不进 facts、偏好进 preferences、混合对话） |
+| 硬不变量 | 每条 facts 都断言不含未来标记（`FUTURE_MARKER`） |
 
 ---
 
@@ -124,7 +138,9 @@ build      ✓ dist/
 
 ---
 
-## 6. 真实 DeepSeek 证据（用户提供）
+## 6. 真实 DeepSeek 证据与门禁判定（G1–G4）
+
+### 6.1 已有观测（用户提供，2026-10-22）
 
 用户在真实 chat.deepseek.com 会话中观察到：
 
@@ -145,6 +161,17 @@ build      ✓ dist/
 这证明 Sensor 的真实页面抓取与 3B 总结已经可用。
 
 **边界**：截图未显示「保存到记忆」和「注入下一轮」后的请求体；因此真实 DeepSeek 的注入闭环仍需最后一步。
+
+### 6.2 门禁判定（执行 docs/real-deepseek-runbook.md 后回填）
+
+| 门禁 | 判据 | 结果 | 证据 |
+|---|---|---|---|
+| **G1** 保存 + 注入 | 会话 A 第 2 轮回答引用第 1 轮事实；Payload 顺序「记忆 → 人设 → 原文」 | 待填 | — |
+| **G2** 跨会话记忆 | 会话 B 刷新页面后仍能答出项目名（来自磁盘 memory.json，不是页面残留） | 待填 | — |
+| **G3** 3 次会话 + 3 条质量问题 | 会话 A/B/C 走完闭环，质量表 3 行有真实现象 | 待填 | — |
+| **G4** 真实 Artifacts | 沙箱内可交互；`fetch` 被 CSP 拦截 | 待填 | — |
+
+> 操作步骤与失败排查见 docs/real-deepseek-runbook.md；全部 PASS 之前，本报告的结论只能算「技术闭环」，不能算「真实闭环」。
 
 ---
 

@@ -1,6 +1,6 @@
 # 端到*端验证指南（E2E Verification）*
 
-> *目标：把*"214 passed + 6 skipped 的单测"变成"真实页面上一次可见的完整流"。  
+> *目标：把单测的「全绿」变成「真实页面上一次可见的完整流」。*
 > 顺序：**先本地 demo 排障 → 再真实 DeepSeek 见血**。不要跳过第一步。
 
 ---
@@ -142,7 +142,7 @@ Router 是**应答驱动**：它分析的是 DeepSeek **回答流**的文本，�
 
 ### 7.4 回归 + 剩余边界（Stage 2 尚未完全关闭）
 
-- 回归：`npm run verify` 全绿 typecheck / lint / arch / **214 passed + 6 skipped** / build。
+- 回归：`npm run verify` 全绿 typecheck / lint / arch / 单测 / build（具体计数以命令输出为准，不在文档里写死）。
 - **技术闭环已关闭**，但「真实 DeepSeek 记忆闭环」还差最后一步，须用户本人完成（不碰第三方账号）：
   1. 登录 DeepSeek，开捕获，发 3 次真实技术对话；
   2. 每次：读取 → 总结 → 保存 → 注入 → 看回答是否真用上记忆；
