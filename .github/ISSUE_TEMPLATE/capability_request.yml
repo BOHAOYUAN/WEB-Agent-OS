@@ -1,0 +1,29 @@
+name: Capability request
+description: A new sensor / router / actor / UI capability
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hard red lines: no auth or credential access, no PoW solving, no request replay, no anti-bot evasion, no cloud relay. Requests that need any of those are closed.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Which layer changes (Sensor / Router / Actor / UI), and what is the smallest useful version?
+    validations:
+      required: true
+  - type: checkboxes
+    id: redlines
+    attributes:
+      label: Red lines
+      options:
+        - label: This proposal needs no credential access and no anti-bot evasion
+          required: true

@@ -1,0 +1,39 @@
+name: Bug report
+description: Something behaves differently from what the docs claim
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Never paste cookies, Authorization headers, tokens, raw frames or real chat content - redact first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you saw, what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1. load dist/ in chrome://extensions
+        2. open chat.deepseek.com
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Windows 11 / Chrome 14x / Node 22.14 / qwen2.5:3b
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output (redacted)
+      description: npm run verify output, side panel status, Sensor transport field.
+    validations:
+      required: false

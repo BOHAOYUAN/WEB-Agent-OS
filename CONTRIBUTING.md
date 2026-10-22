@@ -21,3 +21,24 @@ npm run verify
 ## 红线
 
 见 README。涉及凭证、登录、PoW、请求重放的 PR 一律拒绝。
+
+## 跑真实模型 E2E（可选）
+
+默认 `npm run verify` 会跳过 6 条真实模型用例（慢、依赖本机 Ollama）。需要本机 `ollama serve` 且已 `ollama pull qwen2.5:3b`：
+
+~~~powershell
+$env:ACTOR_E2E='1'
+npx vitest run packages/actor/test/cli-smoke.test.ts packages/actor/test/memory-quality.test.ts
+~~~
+
+预期 9 passed、约 8–10 秒。改摘要 prompt 或 `normalizeSummary` 之前，先让这 9 条通过。
+
+## 文档地图
+
+| 想了解 | 看 |
+| --- | --- |
+| 整体架构与四层边界 | docs/architecture.md |
+| 真实页面验收（需要本人登录） | docs/real-deepseek-runbook.md |
+| 记忆闭环逐段讲解 | docs/ownership-audit.md |
+| 发布前检查 | docs/prepublish-checklist.md |
+| 威胁模型 | docs/threat-model.md |

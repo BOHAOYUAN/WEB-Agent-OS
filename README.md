@@ -4,7 +4,31 @@
 
 Web-OS-Agent is a four-layer, decoupled runtime that turns a plain AI chat page (DeepSeek today) into an agent surface without using any API key or touching your credentials. It watches the page's own network traffic, turns the stream into structured events, routes intent, injects persona + memory, runs allowlisted local commands, and renders model-generated code in a sandbox.
 
-<!-- TODO(works-portfolio): add demo GIF + CI/release badges once GitHub is public. -->
+<p>
+  <img alt="version" src="https://img.shields.io/badge/version-v0.1.0-green">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
+  <img alt="tests" src="https://img.shields.io/badge/tests-248%20passed-brightgreen">
+</p>
+
+<!-- TODO(owner): after the repo is public, add the live CI badge:
+     <img alt="CI" src="https://github.com/<owner>/Web-OS-Agent/actions/workflows/verify.yml/badge.svg"> -->
+
+<details>
+<summary>中文简介（点击展开）</summary>
+
+Web-OS-Agent 把 AI 网页端变成 Agent 运行时：只读地观察你自己浏览器里已经发出的请求，把流拆成结构化事件，按 requestId 配成对话，用本地 3B 模型压成结构化记忆，再把「记忆 + 人设」作为前缀注入下一轮请求；模型生成的 HTML/SVG 在 opaque-origin 沙箱里渲染，出不了网、也碰不到扩展的 token 与存储。
+
+- 不用 API key，不碰账号 / Cookie / Token / PoW；
+- 四层解耦：Sensor → Router → Actor → UI；
+- 本地优先：记忆总结走 127.0.0.1:11434 的 Ollama，对话原文本不落盘。
+
+定位是毕业设计 + 作品集，MIT。文档入口见 docs/。
+
+</details>
+
+## Demo
+
+**5 分钟演示视频**：待录制，发布后在这里放链接；分镜与录制清单见 [docs/demo-storyboard.md](docs/demo-storyboard.md)。
 
 ---
 
@@ -78,7 +102,7 @@ docs/               architecture, protocol notes, threat model, roadmap
 
 ## Status & roadmap
 
-Core layers (Sensor → Router → Actor → memory loop → Artifacts) are done and covered by ~250 tests, including real-browser integration and CSP/sandbox contract tests. Roadmap and threat model live in `docs/roadmap.md` and `docs/threat-model.md`.
+Core layers (Sensor → Router → Actor → memory loop → Artifacts) are done and covered by 248 tests, plus 6 opt-in real-model tests (`ACTOR_E2E=1`): 1 live Actor CLI integration and 5 memory-quality assertions that pin the facts/plan boundary. Real-browser integration and CSP/sandbox contract tests are included. Roadmap and threat model live in `docs/roadmap.md` and `docs/threat-model.md`.
 
 ## License
 
