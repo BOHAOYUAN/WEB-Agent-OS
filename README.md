@@ -50,15 +50,11 @@ npm run build      # → dist/
 ```
 
 1. Open `chrome://extensions`, enable **Developer mode**, load `dist/`.
-2. Start the local Actor (autostart helpers in `scripts/`):
-   ```powershell
-   # Windows: scripts/autostart.vbs → Startup folder (starts Ollama + Actor on login)
-   node dist/actor-cli.js --token <token> --allow-origin chrome-extension://<id>
-   ```
-3. Open `https://chat.deepseek.com`, log in with **your own** account, open the side panel, paste the token.
+2. Start the local Actor via `scripts/autostart.ps1` — it launches Ollama (if not already running) and the Actor CLI, reading the token and extension ID from `%LOCALAPPDATA%\WebOSAgent\` (auto-generated on first run). One-time setup and the `-DryRun` diagnostic are in [docs/autostart.md](docs/autostart.md).
+3. Open `https://chat.deepseek.com`, log in with **your own** account, open the side panel, paste the token from `%LOCALAPPDATA%\WebOSAgent\token.txt`.
 4. Send a message. Watch the panel capture the stream; ask for a ```html or ```svg block and open it in the sandbox.
 
-> The token is loopback-only and generated on your machine: the CLI prints it once at startup, it is never written to logs or committed. The extension reads no cookies, tokens, or anti-bot headers.
+> The token is loopback-only and generated on your machine: it lives in `%LOCALAPPDATA%\WebOSAgent\token.txt`, is never written to logs, and is not committed. The extension reads no cookies, tokens, or anti-bot headers.
 
 ## Repository layout
 
