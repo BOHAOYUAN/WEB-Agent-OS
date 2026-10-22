@@ -31,7 +31,7 @@ git log --all -p | Select-String 'WebOSLocal'
 
 ## 3. 历史卫生（2026-10-22 已完成）
 
-状态：**已完成**。旧 token 与个人 gmail 都已从全部历史移除，所有提交作者改为 `haoyuanbo <haoyuanbo@users.noreply.github.com>`；
+状态：**已完成**。旧 token 与个人 gmail 都已从全部历史移除，所有提交作者统一为 `BOHAOYUAN <BOHAOYUAN@users.noreply.github.com>`；
 重写前的完整备份放在仓库外：`E:\project\webos-agent-backup-20261022.bundle`（`git bundle create --all`，可用 `git clone <bundle>` 恢复）。
 代价是所有提交 hash 变化；文档已不引用短 hash，因此没有失效引用。仓库本地 `user.email` 也改成了 noreply。
 
