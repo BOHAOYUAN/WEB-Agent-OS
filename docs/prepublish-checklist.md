@@ -49,7 +49,7 @@ git log --all -p | Select-String '<泄漏值>'   # 期望 0 条
 
 - [x] `docs/captures/*.png` 逐张看过：目前 3 张都只有侧边栏 UI，无账号、邮箱、真实对话内容（2026-10-22 已人工确认）
 - [ ] 新增截图命名为 `real-*.png` 时，确认浏览器标签栏/头像已打码
-- [ ] README 的 Quickstart 在一台“干净目录”里走过一遍（clone → npm ci → verify → 加载 dist）
+- [x] 干净目录 clone → `npm ci` → `npm run verify` 已通过（2026-10-22，28 个提交）；「加载 dist 扩展」一步仍需人工在干净浏览器里做
 - [x] `docs/roadmap.md`、`docs/stage2-acceptance-report.md` 状态与代码一致（2026-10-22 已刷新）
 
 ## 5. 仓库元数据（GitHub 上）
