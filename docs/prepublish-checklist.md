@@ -26,43 +26,39 @@ git grep -nE 'E:\project|C:\Users' -- '*.ps1' '*.vbs' '*.ts' '*.mjs' '*.json' '*
 git log --all -p | Select-String 'WebOSLocal'
 ~~~
 
-判定：前两条必须 0 命中（`git grep` 无匹配时退出码为 1，属正常）；第三条目前会命中旧 token，按第 3 节清零。
+判定：三条都必须 0 命中。2026-10-22 已全部清零：历史里没有旧 token，也没有个人邮箱。
 `scripts/autostart.ps1` 里出现的 `WebOSLocal-` 只是新 token 的前缀拼接，不是密钥。
 
-## 3. 历史里的旧 token（可选，但建议在首次 push 前做）
+## 3. 历史卫生（2026-10-22 已完成）
 
-现状：2026-10-22 生成的那个旧 token 仍留在 git 历史里（`git log -p | Select-String WebOSLocal` 能命中；HEAD 已无）。
-`%LOCALAPPDATA%\WebOSAgent\token.txt` 生成），没有真实风险，但会让 secret scanner 报警、观感差。
+状态：**已完成**。旧 token 与个人 gmail 都已从全部历史移除，所有提交作者改为 `haoyuanbo <haoyuanbo@users.noreply.github.com>`；
+重写前的完整备份放在仓库外：`E:\project\webos-agent-backup-20261022.bundle`（`git bundle create --all`，可用 `git clone <bundle>` 恢复）。
+代价是所有提交 hash 变化；文档已不引用短 hash，因此没有失效引用。仓库本地 `user.email` 也改成了 noreply。
 
-已在本机验证过的清理流程（22 个提交、0.7 秒、清理后历史与 HEAD 均为 0 命中）：
+以后万一再泄漏（例如误提交了新 token），照这个流程再来一次：
 
 ~~~powershell
 python -m pip install --user git-filter-repo
-$tmp = Join-Path $env:TEMP 'webos-scrub-test'
-git clone --no-local <仓库根目录> $tmp          # 先在副本上确认结果
-Push-Location $tmp
-Set-Content replacements.txt (<旧 token> + '==>***REDACTED***')   # 旧值从 git log 里复制，别写回仓库
+git bundle create ..\webos-backup.bundle --all
+Set-Content replacements.txt (<泄漏值> + '==>***REDACTED***')
 python -m git_filter_repo --replace-text replacements.txt --force
-git log --all -p | Select-String 'WebOSLocal'   # 期望 0 条
-Pop-Location
+git log --all -p | Select-String '<泄漏值>'   # 期望 0 条
 ~~~
-
-确认无误后对真实仓库重复：**先打备份 bundle**（`git bundle create ..\webos-backup.bundle --all`），再在仓库里执行同样三条命令。
-代价：所有提交 hash 变化（文档已改为引用提交标题，不再引用短 hash，故不受影响）。
 
 ## 4. 截图与文档审查
 
-- [ ] `docs/captures/*.png` 逐张看过：目前 3 张都只有侧边栏 UI，无账号、邮箱、真实对话内容（本轮已人工确认）
+- [x] `docs/captures/*.png` 逐张看过：目前 3 张都只有侧边栏 UI，无账号、邮箱、真实对话内容（2026-10-22 已人工确认）
 - [ ] 新增截图命名为 `real-*.png` 时，确认浏览器标签栏/头像已打码
 - [ ] README 的 Quickstart 在一台“干净目录”里走过一遍（clone → npm ci → verify → 加载 dist）
-- [ ] `docs/roadmap.md`、`docs/stage2-acceptance-report.md` 状态与代码一致（本轮已刷新）
+- [x] `docs/roadmap.md`、`docs/stage2-acceptance-report.md` 状态与代码一致（2026-10-22 已刷新）
 
 ## 5. 仓库元数据（GitHub 上）
 
 - [ ] About：一句话定位 + topics（chrome-extension, ai-agent, browser-automation, typescript, mv3）
 - [ ] LICENSE：MIT（已在仓库里）
-- [ ] SECURITY.md：补一个真实可用的联系方式（当前写“维护者邮箱”，发布前填）
-- [ ] README 顶部 TODO(badges) 在 CI 首绿后替换为 badge + demo GIF
+- [x] SECURITY.md：已改为 GitHub Private vulnerability reporting（不再写邮箱）
+- [ ] README 顶部已有 version / license / tests 三个 badge；CI badge 的占位注释在公开后换成真实链接
+- [ ] 把 `.github/ISSUE_TEMPLATE/config.yml` 里的 `OWNER` 换成真实 GitHub owner
 - [ ] .github/workflows/verify.yml 首次 push 后必须绿
 
 ## 6. 发布步骤

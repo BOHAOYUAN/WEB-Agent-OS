@@ -183,7 +183,7 @@ npx vitest run packages/actor/test/cli-smoke.test.ts packages/actor/test/memory-
 | 重新加载扩展后需要重新粘贴 token | token 改存 chrome.storage.local，侧边栏打开自动连接（见 feat(dev): 自启动 + token 持久化） |
 | 每次重启需要手动启动 Actor | Windows 登录自启脚本启动 Ollama + Actor（见 feat(dev): 自启动 + token 持久化） |
 | 固定 token 与绝对路径写死在 autostart 脚本里 | 改为读 %LOCALAPPDATA%\WebOSAgent（首次运行生成 token），仓库不再含密钥和机器路径 |
-| 旧 token 进入 git 历史 | token 已轮换作废；零痕迹流程见 docs/prepublish-checklist.md |
+| 旧 token / 个人邮箱进入 git 历史 | token 已轮换作废；2026-10-22 重写历史（旧 token 0 命中），作者改为 noreply，重写前备份在仓库外 |
 
 ---
 
