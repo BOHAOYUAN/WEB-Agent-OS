@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/OWNER/Web-OS-Agent/security/advisories/new
+    url: https://github.com/BOHAOYUAN/WEB-Agent-OS/security/advisories/new
     about: Report vulnerabilities privately, never in a public issue

@@ -7,11 +7,8 @@ Web-OS-Agent is a four-layer, decoupled runtime that turns a plain AI chat page 
 <p>
   <img alt="version" src="https://img.shields.io/badge/version-v0.1.0-green">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="tests" src="https://img.shields.io/badge/tests-248%20passed-brightgreen">
+  <a href="https://github.com/BOHAOYUAN/WEB-Agent-OS/actions/workflows/verify.yml"><img alt="CI" src="https://github.com/BOHAOYUAN/WEB-Agent-OS/actions/workflows/verify.yml/badge.svg"></a>
 </p>
-
-<!-- TODO(owner): after the repo is public, add the live CI badge:
-     <img alt="CI" src="https://github.com/<owner>/Web-OS-Agent/actions/workflows/verify.yml/badge.svg"> -->
 
 <details>
 <summary>中文简介（点击展开）</summary>
