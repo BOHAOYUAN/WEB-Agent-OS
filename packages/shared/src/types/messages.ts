@@ -1,6 +1,7 @@
 import type { SensorErrorCode, SensorEvent, Transport } from "./events.js";
 import type { SystemContext } from "./memory.js";
-import type { Artifact, ArtifactScope } from "./artifacts.js";
+import type { Artifact, ArtifactFeedback, ArtifactScope } from "./artifacts.js";
+import type { PageActConfirmRequest } from "./page-act.js";
 
 export type MainToBridgeMessage =
   | { kind: "webos/sensor.ready"; v: 1; pageSessionId: string }
@@ -95,7 +96,16 @@ export type RuntimeMessage =
   | { kind: "webos/memory.capture.get" }
   | { kind: "webos/memory.clear-captured"; tabId: number }
   | { kind: "webos/memory.transcript.request"; tabId: number }
-  | { kind: "webos/artifacts.request"; tabId: number; scope?: ArtifactScope };
+  | { kind: "webos/artifacts.request"; tabId: number; scope?: ArtifactScope }
+  /** Relayed by the side panel from the artifact sandbox page. */
+  | { kind: "webos/artifact.feedback"; tabId: number; feedback: ArtifactFeedback }
+  | { kind: "webos/artifact.feedback.get"; tabId: number }
+  /** PageAct: the content script asks the worker for a user decision. */
+  | { kind: "webos/pageact.confirm.request"; request: PageActConfirmRequest }
+  /** PageAct: the side panel relays the user's answer. */
+  | { kind: "webos/pageact.confirm.response"; id: string; approved: boolean }
+  /** PageAct: run a batch of actions in a tab. */
+  | { kind: "webos/pageact.run"; tabId: number; actions: unknown };
 
 export interface CaptureDumpResponse {
   kind: "webos/capture.dump.result";
@@ -108,7 +118,17 @@ export type ContentMessage =
   | { kind: "webos/capture.dump" }
   | { kind: "webos/inject.arm"; v: 1; pageSessionId: string; context: SystemContext }
   | { kind: "webos/inject.disarm"; v: 1; pageSessionId: string; target: "persona" | "memory" | "all" }
-  | { kind: "webos/memory.set-capture"; v: 1; enabled: boolean };
+  | { kind: "webos/memory.set-capture"; v: 1; enabled: boolean }
+  | { kind: "webos/pageact.run"; v: 1; actions: unknown };
+
+/** What the content script answers after running a batch. */
+export interface PageActRunResponse {
+  kind: "webos/pageact.run.result";
+  ok: boolean;
+  /** One entry per action, in order. */
+  results?: unknown[];
+  error?: string;
+}
 
 export interface MemoryTranscriptResponse {
   kind: "webos/memory.transcript.result";
@@ -142,4 +162,21 @@ export interface UiSessionSnapshot {
 
 export type UiMessage =
   | { kind: "webos/ui.snapshot"; sessions: UiSessionSnapshot[] }
-  | { kind: "webos/ui.batch"; tabId: number; batch: SensorBatch };
+  | { kind: "webos/ui.batch"; tabId: number; batch: SensorBatch }
+  | {
+      kind: "webos/ui.artifacts";
+      tabId: number;
+      pageSessionId: string;
+      artifacts: Artifact[];
+      answerChars: number;
+    }
+  /** A dangerous action is waiting for the user's decision. */
+  | { kind: "webos/ui.pageact.confirm"; request: PageActConfirmRequest }
+  /** A model-proposed batch finished (or failed) — pushed so the console can
+   *  show the outcome even though the model, not the console, was the caller. */
+  | {
+      kind: "webos/ui.pageact.result";
+      tabId: number;
+      actions: unknown;
+      outcome: { ok: boolean; results?: unknown[]; error?: string };
+    };

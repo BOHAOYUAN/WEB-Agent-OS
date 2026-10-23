@@ -155,5 +155,10 @@ export function validateActorCommand(value: unknown): ActorCommandValidation {
     return { ok: false, reason: "unknown memory-store action" };
   }
 
+  if (value.kind === "audit-dump") {
+    // Read-only: returns the bridge's already-redacted audit trail.
+    return { ok: true, command: value as ActorCommand };
+  }
+
   return { ok: false, reason: "unknown command kind" };
 }

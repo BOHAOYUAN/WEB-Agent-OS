@@ -14,6 +14,12 @@ import type { MemorySummary } from "./actor.js";
 export interface SystemContext {
   persona?: string;
   memory?: string;
+  /**
+   * What the user did inside a rendered Artifact, reported via
+   * `webos.report()`. Merged last so the freshest signal sits closest to the
+   * user's next message.
+   */
+  artifactFeedback?: string;
 }
 
 export interface MemorySource {
@@ -60,7 +66,10 @@ export function isSystemContext(value: unknown): value is SystemContext {
   const record = value as Record<string, unknown>;
   if (record.persona !== undefined && typeof record.persona !== "string") return false;
   if (record.memory !== undefined && typeof record.memory !== "string") return false;
-  return record.persona !== undefined || record.memory !== undefined;
+  if (record.artifactFeedback !== undefined && typeof record.artifactFeedback !== "string") return false;
+  return (
+    record.persona !== undefined || record.memory !== undefined || record.artifactFeedback !== undefined
+  );
 }
 
 export function isMemorySource(value: unknown): value is MemorySource {

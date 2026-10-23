@@ -20,6 +20,46 @@ export const ACTOR_LIMITS = {
   maxTimeoutMs: 60_000,
 } as const;
 
+/**
+ * Security-relevant events in the local Actor bridge.
+ *
+ * This is the vocabulary of the audit trail: anything a reviewer would ask
+ * about later. Routine traffic (heartbeats, successful reads) is NOT here —
+ * the trail answers "who was refused, and what did we run", not "what
+ * happened".
+ */
+export type AuditEvent =
+  /** The connection's Origin was not on the allowlist. */
+  | "handshake-denied"
+  /** The handshake token was missing or wrong. */
+  | "token-denied"
+  /** A frame could not be decoded, or its JSON was malformed. */
+  | "malformed-frame"
+  /** A command was refused by validation or by the exec allowlist. */
+  | "command-denied"
+  /** A command was accepted but did not succeed (timeout, spawn error, …). */
+  | "command-failed"
+  /** A command was accepted and executed. */
+  | "command-ok"
+  /** A command was throttled by the connection's rate limit. */
+  | "rate-limited"
+  /** The connection went away. */
+  | "connection-closed";
+
+/**
+ * One entry of the audit trail.
+ *
+ * `detail` is a short, ALREADY-REDACTED string: the bridge masks tokens and
+ * caps the length before a record is stored, so an exported trail cannot leak
+ * what it must not.
+ */
+export interface AuditRecord {
+  /** Epoch milliseconds. */
+  ts: number;
+  event: AuditEvent;
+  detail: string;
+}
+
 /** Structured long-term memory produced by the local summarizer. */
 export interface MemorySummary {
   facts: string[];
@@ -34,6 +74,7 @@ export interface MemorySummary {
  *  - `exec` runs an allowlisted command line (Node only in this phase);
  *  - `memory-summary` is a builtin that summarizes a transcript via local
  *    Ollama — it is handled inside the Actor process and never spawns a shell.
+ *  - `audit-dump` returns the bridge's security audit trail (read-only).
  */
 export type ActorCommand =
   | {
@@ -49,6 +90,12 @@ export type ActorCommand =
       id: string;
       kind: "memory-summary";
       transcript: string;
+      timeoutMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      kind: "audit-dump";
       timeoutMs: number;
     }
   | {
@@ -84,7 +131,9 @@ export type ActorErrorCode =
   | "ollama-unavailable"
   | "ollama-timeout"
   | "invalid-json"
-  | "memory-io";
+  | "memory-io"
+  /** The connection exceeded its command rate limit. */
+  | "rate-limited";
 
 /**
  * Result of an Actor command. Success branches are keyed by `kind` so the UI
@@ -108,6 +157,14 @@ export type ActorResult =
       memory: MemorySummary;
       model: string;
       elapsedMs: number;
+    }
+  | {
+      v: typeof ACTOR_PROTOCOL_VERSION;
+      id: string;
+      ok: true;
+      kind: "audit-dump";
+      /** Oldest first. Bounded by the bridge's audit capacity. */
+      records: AuditRecord[];
     }
   | {
       v: typeof ACTOR_PROTOCOL_VERSION;

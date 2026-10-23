@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { SensorEvent } from "../src/types/events.js";
 import { MAX_ARTIFACT_CHARS } from "../src/types/artifacts.js";
-import { buildAnswerText, classifyLanguage, extractArtifacts, renderArtifactSrcdoc } from "../src/artifacts/artifacts.js";
+import {
+  buildAnswerText,
+  classifyLanguage,
+  extractArtifacts,
+  extractPageActions,
+  renderArtifactSrcdoc,
+  runtimeForLanguage,
+} from "../src/artifacts/artifacts.js";
 import type { Artifact } from "../src/types/artifacts.js";
 
 function delta(requestId: string, channel: "thinking" | "answer", text: string): SensorEvent {
@@ -9,7 +16,14 @@ function delta(requestId: string, channel: "thinking" | "answer", text: string):
 }
 
 function artifact(language: string, code: string, index = 0): Artifact {
-  return { id: `artifact-${index}`, index, language, code, kind: classifyLanguage(language) };
+  return {
+    id: `artifact-${index}`,
+    index,
+    language,
+    code,
+    kind: classifyLanguage(language),
+    runtime: runtimeForLanguage(language),
+  };
 }
 
 describe("buildAnswerText", () => {
@@ -169,5 +183,32 @@ describe("sandbox security contract", () => {
 
   it("emits default-src 'none' in every rendered srcdoc", () => {
     expect(render("<div>ok</div>").srcdoc).toContain("default-src 'none'");
+  });
+});
+
+describe("extractPageActions", () => {
+  it("extracts a ```pageact block as parsed JSON", () => {
+    const text = '好的，我来操作。\n```pageact\n[{"kind":"click","selector":"#submit"}]\n```\n完成。';
+    expect(extractPageActions(text)).toEqual([{ actions: [{ kind: "click", selector: "#submit" }] }]);
+  });
+
+  it("ignores fences in other languages", () => {
+    const text = '```html\n<div>x</div>\n```\n```pageact\n[{"kind":"scroll","to":"top"}]\n```';
+    expect(extractPageActions(text)).toEqual([{ actions: [{ kind: "scroll", to: "top" }] }]);
+  });
+
+  it("skips malformed JSON inside a pageact block (model noise)", () => {
+    const text = '```pageact\nnot json at all\n```';
+    expect(extractPageActions(text)).toEqual([]);
+  });
+
+  it("skips an unclosed pageact fence", () => {
+    const text = '```pageact\n[{"kind":"click","selector":"#x"}]';
+    expect(extractPageActions(text)).toEqual([]);
+  });
+
+  it("is case-insensitive on the fence language", () => {
+    const text = '```PAGEACT\n[{"kind":"waitFor","selector":"#x","timeoutMs":5000}]\n```';
+    expect(extractPageActions(text)).toHaveLength(1);
   });
 });

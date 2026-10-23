@@ -46,4 +46,6 @@ export const CHANNELS = {
   actorTokenStorageKey: "webos:actor:token:v1",
   /** Opt-in user-prompt capture flag (local storage, persists across restarts until cleared). */
   memoryCaptureStorageKey: "webos:memory:capture-user:v1",
+  /** Canvas auto-render toggle (local storage; defaults to on when absent). */
+  canvasAutoRenderStorageKey: "webos:canvas:auto-render:v1",
 } as const;
