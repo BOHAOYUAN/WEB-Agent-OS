@@ -162,6 +162,10 @@ npm run demo        # local SSE + PageAct fixtures on :4318
 
 We are at the beginning. If the idea of a local, auditable agent runtime for the web resonates with you, the fastest way to help is to use it on a page you care about and file what broke.
 
+## The long game
+
+The next decade of software will be written in natural language and executed where the work happens. We are building the runtime that makes that local, auditable, and yours — in the open.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
