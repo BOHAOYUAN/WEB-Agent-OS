@@ -6,7 +6,8 @@
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
-    "storage"
+    "storage",
+    "downloads"
   ],
   "host_permissions": [
     "https://chat.deepseek.com/*"
@@ -23,7 +24,9 @@
     "sandbox": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; child-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';"
   },
   "sandbox": {
-    "pages": ["artifact-sandbox.html"]
+    "pages": [
+      "artifact-sandbox.html"
+    ]
   },
   "side_panel": {
     "default_path": "sidepanel.html"
@@ -48,6 +51,16 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "pageact-content.js"
+      ],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
     }
   ]
 }

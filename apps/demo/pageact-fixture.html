@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>PageAct 测试台</title>
+    <style>
+      body {
+        font: 14px/1.6 system-ui, sans-serif;
+        margin: 24px;
+        color: #1f2328;
+        background: #fff;
+      }
+      h1 { font-size: 18px; }
+      h2 { font-size: 14px; margin-top: 28px; color: #57606a; }
+      table { border-collapse: collapse; margin: 8px 0; }
+      th, td { border: 1px solid #d0d7de; padding: 4px 10px; text-align: left; }
+      button, .btn {
+        font: inherit;
+        padding: 4px 12px;
+        margin: 4px 6px 4px 0;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        background: #f6f8fa;
+        cursor: pointer;
+      }
+      #log {
+        margin-top: 20px;
+        padding: 8px 10px;
+        border: 1px dashed #d0d7de;
+        background: #f6f8fa;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        min-height: 60px;
+        white-space: pre-wrap;
+      }
+      .hint { color: #57606a; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>PageAct 测试台</h1>
+    <p class="hint">
+      每一组元素对应一种危险判定。点击后会在最下面的日志里留痕，用来确认动作<strong>真的执行了</strong>，而不只是「没报错」。
+    </p>
+
+    <h2>1. 无害元素（不会弹确认）</h2>
+    <button id="harmless" onclick="log('点击了无害按钮 #harmless')">普通按钮</button>
+    <p id="paragraph">这是一段可以被 extract/text 读走的正文。</p>
+
+    <h2>2. 表格（extract/table）</h2>
+    <table id="orders">
+      <thead>
+        <tr><th>订单号</th><th>金额</th><th>状态</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A-1001</td><td>12.00</td><td>已付款</td></tr>
+        <tr><td>A-1002</td><td>8.50</td><td>待付款</td></tr>
+        <tr><td>A-1003</td><td>99.90</td><td>已退款</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. 危险元素（会弹确认）</h2>
+    <p class="hint">
+      下载：<code>&lt;a download&gt;</code> ／ 提交：<code>&lt;button type=submit&gt;</code> ／
+      凭据：<code>&lt;input type=password&gt;</code> ／ 删除：短文本命中「删除」
+    </p>
+
+    <button id="download-btn" onclick="log('（不该发生）下载按钮被直接点击了')">下载报表</button>
+    <a id="download-link" href="data:text/plain,hello" download="report.txt">下载链接</a>
+
+    <form id="the-form" onsubmit="log('（不该发生）表单被提交了'); return false;">
+      <input id="pwd" type="password" placeholder="密码（凭据字段）" />
+      <input id="who" type="text" placeholder="普通文本框" />
+      <button id="submit-btn" type="submit">提交订单</button>
+    </form>
+
+    <button id="delete-btn" onclick="log('（不该发生）删除按钮被直接点击了')">删除订单</button>
+
+    <h2>4. 翻页与等待</h2>
+    <button id="page-2" onclick="log('翻到了第 2 页')">下一页</button>
+    <div id="slow" style="display: none">延迟出现的元素</div>
+
+    <h2>5. 执行日志</h2>
+    <div id="log">（还没有任何动作被执行）</div>
+
+    <script>
+      function log(text) {
+        const box = document.getElementById("log");
+        box.textContent = (box.textContent === "（还没有任何动作被执行）" ? "" : box.textContent + "\n") + "· " + text;
+      }
+      // 2 秒后出现，用来测 waitFor
+      setTimeout(() => {
+        const slow = document.getElementById("slow");
+        slow.style.display = "block";
+        log("延迟元素已出现");
+      }, 2000);
+    </script>
+  </body>
+</html>

@@ -22,8 +22,24 @@ describe("Artifacts sandbox manifest contract", () => {
 
   it("the sandbox page only accepts parent messages and writes into a nested iframe", () => {
     const html = readFileSync(join(root, "apps/extension/src/artifact-sandbox.html"), "utf8");
-    expect(html).toContain("event.source !== window.parent");
+    // Render instructions come from the sidepanel, and only from it.
+    expect(html).toContain("event.source === window.parent");
     expect(html).toContain("data.type !== \"webos/artifact.render\"");
     expect(html).toContain("target.srcdoc = data.html");
+  });
+
+  it("the sandbox page verifies artifact feedback came from its own iframe", () => {
+    const html = readFileSync(join(root, "apps/extension/src/artifact-sandbox.html"), "utf8");
+    // The artifact iframe has an opaque origin, so event.origin is "null" and
+    // cannot be checked — source identity is the only guard available.
+    expect(html).toContain("event.source === target.contentWindow");
+    expect(html).toContain("webos.artifact.feedback");
+  });
+
+  it("the sandbox page never grants allow-same-origin to the artifact iframe", () => {
+    const html = readFileSync(join(root, "apps/extension/src/artifact-sandbox.html"), "utf8");
+    const sandboxAttr = /<iframe[^>]*sandbox="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(sandboxAttr).toBe("allow-scripts");
+    expect(sandboxAttr).not.toContain("allow-same-origin");
   });
 });

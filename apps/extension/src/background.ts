@@ -2,11 +2,17 @@ import {
   CHANNELS,
   LIMITS,
   MAX_MEMORY_INJECT_CHARS,
+  artifactSignature,
   buildAnswerText,
   buildTranscript,
   extractArtifacts,
+  extractPageActions,
+  formatFeedbackForContext,
   isSensorBatch,
   isSensorEvent,
+  isTurnSettled,
+  normalizeArtifactFeedback,
+  selectAutoRenderArtifact,
 } from "@webos/shared";
 import type {
   ArtifactsResponse,
@@ -21,6 +27,7 @@ import type {
   UiSessionSnapshot,
 } from "@webos/shared";
 import { RouterHost, readRouterEnabled, writeRouterEnabled } from "./router-host.js";
+import { PageActHost } from "./pageact-host.js";
 
 interface TabState {
   tabId: number;
@@ -28,7 +35,24 @@ interface TabState {
   events: SensorEvent[];
   chars: number;
   updatedAt: number;
+  /** Rendered-artifact interactions (`webos.report`), oldest first, bounded. */
+  artifactFeedback: string[];
+  /**
+   * Signature of the artifact last pushed to the canvas for this tab.
+   * Dedupe guard: a settled turn pushes at most once per distinct artifact,
+   * even if the end event is re-delivered or the SW restarts mid-session.
+   */
+  artifactPushSignature: string | null;
+  /**
+   * Signature of the page-action batch last run for this tab. Same dedupe
+   * rationale as the artifact push: a settled turn runs each distinct
+   * ```pageact block exactly once.
+   */
+  pageActRunSignature: string | null;
 }
+
+/** Keep only the most recent artifact interactions per tab. */
+const MAX_ARTIFACT_FEEDBACK_ENTRIES = 8;
 
 const tabs = new Map<number, TabState>();
 const ports = new Set<chrome.runtime.Port>();
@@ -99,6 +123,19 @@ function broadcast(message: UiMessage): void {
   }
 }
 
+/**
+ * PageAct host.
+ *
+ * `hasPanel` is what makes "nobody is listening" a refusal rather than a
+ * hang: with no side panel open there is nobody who could approve a
+ * dangerous action, so the worker must not wait for an answer that cannot
+ * come.
+ */
+const pageActHost = new PageActHost({
+  broadcast: (message) => broadcast(message),
+  hasPanel: () => ports.size > 0,
+});
+
 function sendSnapshot(port: chrome.runtime.Port): void {
   const sessions: UiSessionSnapshot[] = [...tabs.values()].map((state) => ({
     tabId: state.tabId,
@@ -117,10 +154,71 @@ function broadcastSnapshot(): void {
   for (const port of ports) sendSnapshot(port);
 }
 
+/**
+ * Push the turn's renderable artifact to every connected side panel (canvas
+ * auto-render). Called once per settled turn; the signature guard makes
+ * re-delivery of the same end event a no-op.
+ *
+ * Push, not poll: `sensor.stream.end` only exists here in the service worker,
+ * so this is the one place that knows a turn actually finished. A polling
+ * side panel would have to guess, and would re-run buildAnswerText on a timer.
+ */
+function maybePushArtifacts(state: TabState): void {
+  const answerText = buildAnswerText(state.events, "latest");
+  const artifacts = extractArtifacts(answerText);
+  const pick = selectAutoRenderArtifact(artifacts);
+  if (!pick) return;
+  const signature = artifactSignature(pick);
+  if (state.artifactPushSignature === signature) return;
+  state.artifactPushSignature = signature;
+  broadcast({
+    kind: "webos/ui.artifacts",
+    tabId: state.tabId,
+    pageSessionId: state.pageSessionId,
+    artifacts,
+    answerChars: answerText.length,
+  });
+}
+
+/**
+ * Model-proposed page actions: a ```pageact block in the answer is not an
+ * artifact, it is an instruction. Extract every such block and run it through
+ * the host — the same host the manual console uses, so the domain allowlist,
+ * the validation, and the danger confirmation are all shared. Dedupe by
+ * signature so a re-delivered end event cannot run the batch twice.
+ */
+function maybeRunPageActions(state: TabState): void {
+  const answerText = buildAnswerText(state.events, "latest");
+  const requests = extractPageActions(answerText);
+  if (requests.length === 0) return;
+  const signature = JSON.stringify(requests.map((request) => JSON.stringify(request.actions)));
+  if (state.pageActRunSignature === signature) return;
+  state.pageActRunSignature = signature;
+  for (const request of requests) {
+    void pageActHost.run(state.tabId, request.actions).then((outcome) => {
+      broadcast({
+        kind: "webos/ui.pageact.result",
+        tabId: state.tabId,
+        actions: request.actions,
+        outcome,
+      });
+    });
+  }
+}
+
 function ingest(tabId: number, batch: SensorBatch): void {
   let state = tabs.get(tabId);
   if (!state || state.pageSessionId !== batch.pageSessionId) {
-    state = { tabId, pageSessionId: batch.pageSessionId, events: [], chars: 0, updatedAt: Date.now() };
+    state = {
+      tabId,
+      pageSessionId: batch.pageSessionId,
+      events: [],
+      chars: 0,
+      updatedAt: Date.now(),
+      artifactFeedback: [],
+      artifactPushSignature: null,
+      pageActRunSignature: null,
+    };
     tabs.set(tabId, state);
   }
 
@@ -128,6 +226,10 @@ function ingest(tabId: number, batch: SensorBatch): void {
     state.events.push(event);
     state.chars += eventWeight(event);
     routerHost.onSensorEvent(event, tabId, batch.pageSessionId);
+    if (isTurnSettled(event)) {
+      maybePushArtifacts(state);
+      maybeRunPageActions(state);
+    }
   }
   state.updatedAt = Date.now();
 
@@ -180,6 +282,13 @@ async function restore(): Promise<void> {
         events,
         chars: events.reduce((sum, event) => sum + eventWeight(event), 0),
         updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : Date.now(),
+        // Artifact interactions are session-scoped: never restored from
+        // storage, so a stale interaction cannot leak into a later session.
+        artifactFeedback: [],
+        // Same: start with no push signature, so the first settled turn after
+        // a restore pushes once (the canvas's own dedupe makes it free).
+        artifactPushSignature: null,
+        pageActRunSignature: null,
       });
     }
     broadcastSnapshot();
@@ -315,11 +424,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       sendResponse({ ok: false, error: "unknown tab" });
       return false;
     }
+    // Merge pending artifact interactions so the next turn can see what the
+    // user did with the components it generated.
+    const feedback = state.artifactFeedback.join("\n");
     const message: ContentMessage = {
       kind: "webos/inject.arm",
       v: 1,
       pageSessionId: state.pageSessionId,
-      context: { memory: msg.text },
+      context: { memory: msg.text, ...(feedback ? { artifactFeedback: feedback } : {}) },
     };
     chrome.tabs.sendMessage(msg.tabId, message).catch(() => undefined);
     sendResponse({ ok: true });
@@ -375,6 +487,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       state.events = [];
       state.chars = 0;
       state.updatedAt = Date.now();
+      state.artifactFeedback = [];
       // Clear any pending memory injection for the next turn.
       const disarmMessage: ContentMessage = {
         kind: "webos/inject.disarm",
@@ -448,6 +561,65 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       pageSessionId: state.pageSessionId,
     } satisfies ArtifactsResponse);
     return false;
+  }
+
+  // Relayed by the side panel from the artifact sandbox page: a rendered
+  // component called `webos.report(...)`. Untrusted input — normalize first.
+  if (msg.kind === "webos/artifact.feedback") {
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse({ ok: false, error: "bad tab id" });
+      return false;
+    }
+    const feedback = normalizeArtifactFeedback(msg.feedback);
+    if (!feedback) {
+      sendResponse({ ok: false, error: "invalid feedback" });
+      return false;
+    }
+    const state = tabs.get(msg.tabId);
+    if (!state) {
+      sendResponse({ ok: false, error: "unknown tab" });
+      return false;
+    }
+    state.artifactFeedback.push(formatFeedbackForContext(feedback));
+    if (state.artifactFeedback.length > MAX_ARTIFACT_FEEDBACK_ENTRIES) {
+      state.artifactFeedback = state.artifactFeedback.slice(-MAX_ARTIFACT_FEEDBACK_ENTRIES);
+    }
+    state.updatedAt = Date.now();
+    broadcastSnapshot();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (msg.kind === "webos/artifact.feedback.get") {
+    const state = Number.isInteger(msg.tabId) ? tabs.get(msg.tabId) : undefined;
+    sendResponse({ feedback: state ? [...state.artifactFeedback] : [] });
+    return false;
+  }
+
+  // --- PageAct -------------------------------------------------------
+  // The content script hit a dangerous action and needs a human decision.
+  // The channel stays open while the user thinks: `return true` keeps it
+  // alive, and the answer travels back on the same channel.
+  if (msg.kind === "webos/pageact.confirm.request") {
+    void pageActHost.requestConfirmation(msg.request).then((outcome) => {
+      sendResponse({ approved: outcome.approved, outcome: outcome.outcome });
+    });
+    return true;
+  }
+
+  // The side panel relayed the user's answer.
+  if (msg.kind === "webos/pageact.confirm.response") {
+    sendResponse({ ok: pageActHost.answer({ id: msg.id, approved: msg.approved }) });
+    return false;
+  }
+
+  // Run a batch of actions in a tab. The response is asynchronous — the
+  // batch may pause for a confirmation — so the channel stays open too.
+  if (msg.kind === "webos/pageact.run") {
+    void pageActHost.run(msg.tabId, msg.actions).then((outcome) => {
+      sendResponse(outcome);
+    });
+    return true;
   }
 
   return false;

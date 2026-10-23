@@ -19,6 +19,11 @@ let handleMessage: MessageHandler;
 let storageLocal: Record<string, unknown>;
 let storageSession: Record<string, unknown>;
 let sentToContent: Array<{ tabId: number; message: Record<string, unknown> }>;
+/** Messages broadcast over the ui port (canvas pushes + snapshots). */
+let portMessages: Array<Record<string, unknown>>;
+let capturedConnectListener: ((port: unknown) => void) | undefined;
+/** Connected fake ports, so afterEach can disconnect them like a real panel. */
+const connectedPorts: Array<{ disconnect: () => void }> = [];
 
 function makeStorageArea(store: Record<string, unknown>) {
   return {
@@ -56,6 +61,7 @@ beforeAll(async () => {
   storageLocal = {};
   storageSession = {};
   sentToContent = [];
+  portMessages = [];
 
   let capturedListener: MessageHandler | undefined;
 
@@ -63,7 +69,11 @@ beforeAll(async () => {
     runtime: {
       onInstalled: { addListener: () => undefined },
       onStartup: { addListener: () => undefined },
-      onConnect: { addListener: () => undefined },
+      onConnect: {
+        addListener: (fn: (port: unknown) => void) => {
+          capturedConnectListener = fn;
+        },
+      },
       onMessage: {
         addListener: (fn: MessageHandler) => {
           capturedListener = fn;
@@ -97,9 +107,38 @@ afterAll(() => {
 
 afterEach(() => {
   sentToContent.length = 0;
+  portMessages.length = 0;
+  // Ports must be disconnected between tests: the service worker keeps every
+  // connected port in a Set and broadcasts to all of them, so a leaked port
+  // multiplies every later assertion.
+  for (const port of connectedPorts) port.disconnect();
+  connectedPorts.length = 0;
   for (const key of Object.keys(storageLocal)) delete storageLocal[key];
   for (const key of Object.keys(storageSession)) delete storageSession[key];
 });
+
+/** Connect a fake side panel port; broadcasts land in `portMessages`. */
+function connectPort(): void {
+  let onDisconnect: (() => void) | undefined;
+  const port = {
+    name: "webos:ui",
+    postMessage: (message: unknown) => {
+      portMessages.push(message as Record<string, unknown>);
+    },
+    onDisconnect: {
+      addListener: (fn: () => void) => {
+        onDisconnect = fn;
+      },
+    },
+    onMessage: { addListener: () => undefined },
+  };
+  connectedPorts.push({ disconnect: () => onDisconnect?.() });
+  capturedConnectListener?.(port);
+}
+
+function pushedArtifacts(): Array<Record<string, unknown>> {
+  return portMessages.filter((m) => m.kind === "webos/ui.artifacts");
+}
 
 function dispatch(
   message: unknown,
@@ -231,5 +270,77 @@ describe("background artifacts.request", () => {
       artifacts: [],
       answerChars: 0,
     });
+  });
+});
+
+describe("background canvas auto-render push", () => {
+  /** One settled turn: prompt → answer delta → stream end. */
+  function ingestSettledTurn(
+    answer: string,
+    options: { requestId?: string; reason?: "finished" | "incomplete" | "aborted" | "error"; session?: string } = {},
+  ): void {
+    const requestId = options.requestId ?? "r1";
+    const batch: SensorBatch = {
+      v: 1,
+      pageSessionId: options.session ?? "session-push",
+      seq: 1,
+      events: [
+        { type: "sensor.user.prompt", requestId, text: "写个页面", ts: 0 },
+        { type: "sensor.text.delta", requestId, channel: "answer", text: answer },
+        { type: "sensor.stream.end", requestId, reason: options.reason ?? "finished", ts: 2 },
+      ],
+    };
+    expect(dispatch({ kind: "webos/sensor.batch", batch })).toEqual({ ok: true });
+  }
+
+  it("pushes the turn's artifact to connected side panels once the turn settles", () => {
+    connectPort();
+    ingestSettledTurn('好的：\n```html\n<div>hi</div>\n```\n', { session: "session-push-1" });
+
+    const pushes = pushedArtifacts();
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]).toMatchObject({
+      kind: "webos/ui.artifacts",
+      tabId: TAB_ID,
+      pageSessionId: "session-push-1",
+    });
+    const artifacts = pushes[0]?.artifacts as Array<{ language: string; code: string }>;
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({ language: "html", code: "<div>hi</div>" });
+  });
+
+  it("does not push for a code-only answer", () => {
+    connectPort();
+    ingestSettledTurn("```python\nprint(1)\n```\n", { session: "session-push-2" });
+    expect(pushedArtifacts()).toHaveLength(0);
+  });
+
+  it("does not push when the stream was aborted", () => {
+    connectPort();
+    ingestSettledTurn('```html\n<div>x</div>\n```\n', { reason: "aborted", session: "session-push-3" });
+    expect(pushedArtifacts()).toHaveLength(0);
+  });
+
+  it("pushes once per distinct artifact, even if the end event repeats", () => {
+    connectPort();
+    ingestSettledTurn('```html\n<div>same</div>\n```\n', { requestId: "r1", session: "session-push-4" });
+    ingestSettledTurn('```html\n<div>same</div>\n```\n', { requestId: "r1", session: "session-push-4" });
+    expect(pushedArtifacts()).toHaveLength(1);
+  });
+
+  it("pushes again when the next turn produces a different artifact", () => {
+    connectPort();
+    ingestSettledTurn('```html\n<div>one</div>\n```\n', { requestId: "r1", session: "session-push-5" });
+    ingestSettledTurn('```html\n<div>two</div>\n```\n', { requestId: "r2", session: "session-push-5" });
+    const pushes = pushedArtifacts();
+    expect(pushes).toHaveLength(2);
+    const second = pushes[1]?.artifacts as Array<{ code: string }>;
+    expect(second[0]?.code).toBe("<div>two</div>");
+  });
+
+  it("pushes an incomplete stream too — partial artifacts beat an empty canvas", () => {
+    connectPort();
+    ingestSettledTurn('```html\n<div>partial</div>\n```\n', { reason: "incomplete", session: "session-push-6" });
+    expect(pushedArtifacts()).toHaveLength(1);
   });
 });

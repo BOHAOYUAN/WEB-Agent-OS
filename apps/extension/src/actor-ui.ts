@@ -36,6 +36,11 @@ export interface ActorPanelOptions {
   onLoadMemory: () => Promise<ActorResult>;
   onClearMemory: () => Promise<ActorResult>;
   onInjectMemory: (text: string) => void;
+  /**
+   * Export the bridge's audit trail. Resolves with a human-readable summary
+   * for the result area; the file itself is written by the caller.
+   */
+  onExportAudit?: () => Promise<string>;
 }
 
 export interface ActorPanel {
@@ -151,7 +156,10 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
   const clearMemoryButton = document.createElement("button");
   clearMemoryButton.className = "ws-button ws-button-ghost";
   clearMemoryButton.textContent = "清空并停止捕获";
-  opsRow.append(saveMemoryButton, injectButton, loadMemoryButton, clearMemoryButton);
+  const exportAuditButton = document.createElement("button");
+  exportAuditButton.className = "ws-button ws-button-ghost";
+  exportAuditButton.textContent = "导出审计日志";
+  opsRow.append(saveMemoryButton, injectButton, loadMemoryButton, clearMemoryButton, exportAuditButton);
 
   const result = document.createElement("pre");
   result.className = "actor-result";
@@ -208,6 +216,7 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
     saveMemoryButton.disabled = !connected || !lastMemory;
     loadMemoryButton.disabled = !connected;
     clearMemoryButton.disabled = !connected;
+    exportAuditButton.disabled = !connected || !options.onExportAudit;
   };
 
   saveButton.addEventListener("click", () => {
@@ -334,6 +343,23 @@ export function mountActorPanel(root: HTMLElement, options: ActorPanelOptions): 
       })
       .finally(() => {
         if (!disposed) clearMemoryButton.disabled = !connected;
+      });
+  });
+
+  exportAuditButton.addEventListener("click", () => {
+    if (!options.onExportAudit) return;
+    exportAuditButton.disabled = true;
+    result.textContent = "（正在导出审计日志…）";
+    void options
+      .onExportAudit()
+      .then((summary) => {
+        result.textContent = summary;
+      })
+      .catch((error: unknown) => {
+        result.textContent = "导出失败：" + (error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!disposed) exportAuditButton.disabled = !connected;
       });
   });
 

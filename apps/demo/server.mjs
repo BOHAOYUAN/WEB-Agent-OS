@@ -56,6 +56,11 @@ const server = createServer((req, res) => {
         await serveFile(res, "index.html");
         return;
       }
+      // PageAct 测试台：每种危险判定都有对应元素，点击后写日志。
+      if (req.method === "GET" && url.pathname === "/pageact") {
+        await serveFile(res, "pageact-fixture.html");
+        return;
+      }
       if (req.method === "POST" && url.pathname === "/api/v0/chat/completion") {
         await streamCompletion(req, res);
         return;

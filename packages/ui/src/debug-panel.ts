@@ -1,4 +1,5 @@
 import type { SensorEvent, UiMessage, UiSessionSnapshot } from "@webos/shared";
+import { el } from "./dom.js";
 
 export interface DebugPanelOptions {
   onDump: () => Promise<unknown | null>;
@@ -22,13 +23,6 @@ interface SessionState {
 }
 
 const MAX_RENDERED_EVENTS = 200;
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 function time(value: number): string {
   const date = new Date(value);

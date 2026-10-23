@@ -29,10 +29,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Merge a system context into a single prompt fragment. Order is fixed:
- * memory → persona. Empty / missing fields are dropped.
+ * memory → persona → artifact feedback. Empty / missing fields are dropped.
+ *
+ * Feedback goes last: it describes what the user just did with a generated
+ * component, so it is the freshest signal and should sit closest to the
+ * user's next message.
  */
 export function composeSystemContext(context: SystemContext): string {
-  const parts = [context.memory, context.persona].filter(
+  const parts = [context.memory, context.persona, context.artifactFeedback].filter(
     (part): part is string => typeof part === "string" && part.trim().length > 0,
   );
   return parts.join(CONTEXT_SEPARATOR);

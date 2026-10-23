@@ -18,10 +18,27 @@
       (function () {
         var target = document.getElementById("target");
         window.addEventListener("message", function (event) {
-          if (event.source !== window.parent) return;
           var data = event.data;
-          if (!data || data.type !== "webos/artifact.render" || typeof data.html !== "string") return;
-          target.srcdoc = data.html;
+          if (!data || typeof data.type !== "string") return;
+
+          // From the sidepanel: render instruction.
+          if (event.source === window.parent) {
+            if (data.type !== "webos/artifact.render" || typeof data.html !== "string") return;
+            target.srcdoc = data.html;
+            return;
+          }
+
+          // From the artifact iframe: interaction feedback via webos.report().
+          // The iframe has an opaque origin, so `event.origin` is "null" and
+          // cannot be checked — `event.source` is the only trustworthy signal.
+          // Verify it is OUR iframe, then relay upward (this page has no
+          // chrome.* API, so the sidepanel does the runtime hop).
+          if (event.source === target.contentWindow && data.type === "webos.artifact.feedback") {
+            window.parent.postMessage(
+              { type: "webos.artifact.feedback", payload: data.payload },
+              "*",
+            );
+          }
         });
       })();
     </script>

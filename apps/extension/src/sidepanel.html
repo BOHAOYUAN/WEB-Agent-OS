@@ -7,9 +7,41 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
-    <div id="actor-root"></div>
-    <div id="artifact-root"></div>
-    <div id="root"></div>
+    <div id="app">
+      <nav id="view-tabs" role="tablist" aria-label="视图">
+        <button
+          type="button"
+          class="view-tab"
+          id="tab-console"
+          data-view="console"
+          role="tab"
+          aria-selected="true"
+          aria-controls="console-view"
+        >
+          控制台
+        </button>
+        <button
+          type="button"
+          class="view-tab"
+          id="tab-canvas"
+          data-view="canvas"
+          role="tab"
+          aria-selected="false"
+          aria-controls="canvas-view"
+        >
+          画布<span class="view-tab-dot" id="canvas-dot" hidden></span>
+        </button>
+      </nav>
+      <div id="console-view" role="tabpanel" aria-labelledby="tab-console">
+        <div id="actor-root"></div>
+        <div id="pageact-root"></div>
+        <div id="artifact-root"></div>
+        <div id="root"></div>
+      </div>
+      <div id="canvas-view" role="tabpanel" aria-labelledby="tab-canvas" hidden>
+        <div id="canvas-root"></div>
+      </div>
+    </div>
     <script type="module" src="sidepanel.js"></script>
   </body>
 </html>
