@@ -14,6 +14,8 @@ const allowedDependencies = {
   router: ["@webos/shared"],
   actor: ["@webos/shared"],
   ui: ["@webos/shared"],
+  brain: ["@webos/shared"],
+  "page-act": ["@webos/shared"],
 };
 
 const forbidden = [
@@ -45,6 +47,11 @@ const forbidden = [
     dir: "packages/ui/src",
     patterns: ["fetch(", "XMLHttpRequest", "WebSocket", "document.cookie", "localStorage"],
     why: "the debug UI is render-only",
+  },
+  {
+    dir: "packages/page-act/src",
+    patterns: ["fetch(", "XMLHttpRequest", "WebSocket", "document.cookie", "localStorage"],
+    why: "the page-act layer drives the DOM; it never touches the network or storage",
   },
 ];
 

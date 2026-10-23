@@ -14,4 +14,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Gate: the dependency tree that actually ships. `dependencies` in
+      # package.json is exactly what ends up in the extension artifact —
+      # react/react-dom are compiled into artifact-runtime.js and sucrase into
+      # artifact-sucrase.js — so this is the tree a user actually runs.
+      - name: audit shipped dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # Report only, never a gate: dev-only findings (vitest/vite/esbuild)
+      # affect the local test toolchain, not the artifact. The known ones and
+      # their rationale live in docs/prepublish-checklist.md §2.
+      - name: audit dev toolchain (report only)
+        continue-on-error: true
+        run: npm audit --audit-level=moderate
       - run: npm run verify

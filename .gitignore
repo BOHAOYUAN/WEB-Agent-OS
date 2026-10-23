@@ -1,5 +1,6 @@
 node_modules/
 dist/
+apps/extension/src/generated/
 *.zip
 .DS_Store
 .env
@@ -10,4 +11,7 @@ docs/captures/*.txt
 .tmp-e2e/
 .tmp-chrome-*/
 .tmp-chrome-smoke/
+.tmp-runtime/
+.tmp-test-*/
+.local/
 .workbuddy/

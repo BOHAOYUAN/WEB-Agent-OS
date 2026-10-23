@@ -4,12 +4,16 @@ import { defineConfig } from "vitest/config";
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
+  // The extension bundle defines `__DEV__` at build time (esbuild `define`).
+  // Tests import the same sources directly, so the global must exist here too.
+  define: { __DEV__: "true" },
   resolve: {
     alias: {
       "@webos/shared": r("./packages/shared/src/index.ts"),
       "@webos/router": r("./packages/router/src/index.ts"),
       "@webos/actor": r("./packages/actor/src/index.ts"),
       "@webos/ui": r("./packages/ui/src/index.ts"),
+      "@webos/page-act": r("./packages/page-act/src/index.ts"),
     },
   },
   test: {
