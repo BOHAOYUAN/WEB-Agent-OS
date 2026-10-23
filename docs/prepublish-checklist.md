@@ -7,7 +7,7 @@
 ~~~powershell
 cd <仓库根目录>
 npm ci
-npm run verify      # 期望：248 passed / 6 skipped / 31 files passed + 1 skipped，build 通过
+npm run verify      # 期望：全部通过（2026-10-23 实测：430 passed / 6 skipped / 48 files passed + 1 skipped），build 通过
 git status --porcelain   # 期望：空
 ~~~
 
@@ -28,6 +28,34 @@ git log --all -p | Select-String 'WebOSLocal'
 
 判定：三条都必须 0 命中。2026-10-22 已全部清零：历史里没有旧 token，也没有个人邮箱。
 `scripts/autostart.ps1` 里出现的 `WebOSLocal-` 只是新 token 的前缀拼接，不是密钥。
+
+### 2.1 依赖审计（CI 硬门禁）
+
+CI 对**出货依赖树**设门禁：`npm audit --omit=dev --audit-level=high`。本地复现要显式指定官方源——npmmirror 未实现 audit 端点：
+
+~~~powershell
+npm audit --omit=dev --registry=https://registry.npmjs.org --audit-level=high
+~~~
+
+`--omit=dev` 恰好等于「会被编译进产物的那批库」——前提是 `react` / `react-dom` 在 `dependencies` 里（它们**确实**被打包进 `dist/artifact-runtime-*.js`），`sucrase` 打包进 `dist/artifact-sucrase.js`：
+
+| 包 | 去向 | 审计结果 |
+|---|---|---|
+| react / react-dom | `dist/artifact-runtime-*.js`（懒加载 chunk） | 0 告警 |
+| sucrase | `dist/artifact-sucrase.js`（懒加载 chunk） | 0 告警 |
+
+**开发工具链的已知告警（只报告、不阻断）**——`npm audit` 全量口径实测 6 个，全部不在产物里：
+
+| 包 | severity | 问题 | 为什么不阻断 |
+|---|---|---|---|
+| vitest | critical | Vitest UI server 监听时的任意文件读 | 测试期依赖，不进产物 |
+| tinypool | critical | worker options 原型污染 → RCE | vitest 的传递依赖 |
+| vite | high | 依赖优化 `.map` 路径穿越 | vitest 的传递依赖 |
+| esbuild | moderate | 开发服务器可被任意网站发请求 | 本项目只用 build API，从不 serve |
+| @vitest/mocker / vite-node | moderate | 同链 | 同上 |
+
+处置：暂不升级 vitest——升到 5.x 是破坏性变更，收益仅限开发期。
+**风险窗口**：CI 会在不可信 PR 上跑 vitest，届时「路径穿越 + 任意文件读」是真实攻击面（能读到 runner 上的文件）。因此**私有仓库 + 限制 PR 来源**比升级 vitest 更实际；若将来要开公开 PR，应先升级 vitest。
 
 ## 3. 历史卫生（2026-10-22 已完成）
 

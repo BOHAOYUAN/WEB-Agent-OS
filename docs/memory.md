@@ -17,7 +17,7 @@ sidepanel「读取当前对话」→ transcript
   ▼「总结当前对话」
 Actor memory-summary（Ollama 127.0.0.1:11434）
   ▼ 预览 → 用户点「保存到记忆」
-Actor memory-store（原子写 ~/.webos-agent/memory.json）
+Actor memory-store（SQLite ~/.webos-agent/memory.db）
   ▼「注入下一轮」
 memory.arm → SystemContext 合并（memory → persona 单前缀）→ prompt-inject
 ```
@@ -25,7 +25,9 @@ memory.arm → SystemContext 合并（memory → persona 单前缀）→ prompt-
 - **注入合并**：人设（Router）与记忆合并成单一 `SystemContext`，一次消费/ack，互相不覆盖；固定拼装顺序「记忆 → 人设 → 原文」。
 - **隐私**：用户提问捕获默认关闭，只存 SW 内存 ring buffer；仅结构化摘要落盘；原始 transcript 永不持久化。
 - **质量兜底**：`facts` 只放已确认事实，计划/待办进 `open_loops`（prompt 硬约束 + few-shot + `enforceFactsBoundary` 确定性守卫 + 保存前人工确认）。
-- **存储**：`~/.webos-agent/memory.json`，原子写（tmp+rename）、损坏文件先备份再覆盖、上限 100 条 / 1MB。
+- **存储**：默认 `~/.webos-agent/memory.db`（SQLite，Node 内置 `node:sqlite`，**零新增依赖**）；上限 100 条，损坏文件可隔离为 `.corrupt-<ts>`。
+  - 旧版为 `~/.webos-agent/memory.json`（原子写 tmp+rename、损坏先备份再覆盖）。**现有行为**：以 sqlite 后端启动且检测到旧 `memory.json` 时会自动导入（原文件保留不动）；`--memory-backend json` 可切回旧后端，导入期间不会删除任何源文件。
+  - 迁移是幂等的（`INSERT OR REPLACE` 按 id），可重复执行；源文件损坏时明确报「损坏」而非当成空文件静默跳过。
 
 ## 1. 模型选择
 
