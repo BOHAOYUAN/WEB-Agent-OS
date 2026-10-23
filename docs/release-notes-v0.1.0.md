@@ -1,45 +1,61 @@
-# v0.1.0 — 第一个可公开的版本
+# v0.1.0 — Local-first agent runtime (foundation)
 
-> 日期：待发布（2026-10 收尾中）。定位：本地优先的开源项目（单人维护），不做商业化，不碰账号与凭证。
+The first public release of **Web-OS-Agent**: a runtime that turns the AI chat page you already use into an agent surface — read-only observation of your own session, local memory, and sandboxed artifacts — with **no API keys and no credentials**.
 
-## 这一版包含什么
+> This tag is the foundation. The v0.2 work (SQLite memory, PageAct, the artifacts canvas) is on `main` and will ship as the next release.
 
-- **Sensor**：MAIN world 只读拦截 XHR + fetch，SSE 分帧、快照去重、thinking/answer 分流；opt-in 捕获用户提问。
-- **Router**：关键词意图 + 5 套人设，MAX_ITERATIONS 循环护栏，运行时开关与失败回退。
-- **Actor**：手写 RFC6455 WebSocket（127.0.0.1:4319）、token 握手、Origin 白名单、心跳、无 shell 命令 runner、memory-summary（本地 Ollama）与 memory-store（原子写）。
-- **UI**：侧边栏调试面板 + 记忆闭环（读取 → 总结 → 预览 → 保存 → 注入 → 清空）+ Artifacts 面板。
-- **Artifacts 沙箱**：识别 fenced html/svg，MV3 sandbox 页 + 嵌套 iframe（allow-scripts、永不 allow-same-origin），CSP default-src none / connect-src none，默认只渲染当前轮、可切全部。
+## Highlights
 
-## 验证
+- **Sensor** — MAIN-world, read-only hooks on XHR / fetch. SSE framing, snapshot dedupe, thinking/answer split, opt-in capture of *your* prompts. It never reads cookies, tokens or anti-bot headers.
+- **Router** — keyword intent rules + a small persona library, with a hard iteration guard. If injection fails, the original request goes out unchanged.
+- **Actor** — hand-rolled RFC 6455 WebSocket on `127.0.0.1:4319`: token handshake, origin allowlist, heartbeat, a no-shell command runner, local memory summary and atomic memory store.
+- **Memory loop** — capture → summarize with a local model → preview → save → inject into the next turn. Merged `SystemContext`, so memory and persona never overwrite each other.
+- **Artifacts sandbox** — fenced html/svg blocks render inside an MV3 sandbox page plus a nested iframe (`allow-scripts`, never `allow-same-origin`) under a `default-src 'none'` / `connect-src 'none'` CSP. Everything else is read-only.
 
-| 项 | 结果 |
+## Verification at release
+
+| Gate | Result |
 | --- | --- |
-| npm run verify（typecheck / lint / arch / 单测 / build） | 248 passed + 6 skipped / 32 files |
-| 真实模型用例（ACTOR_E2E=1） | 9 passed：1 条 CLI 真实总结 + 5 条摘要质量 + 3 条协议用例，约 8-10s |
-| 本地真实浏览器 E2E | 9 步主链路全 PASS，含注入 Payload 顺序「记忆 → 人设 → 原文」 |
-| 真实 DeepSeek 抓流 | xhr / answer 673 / thinking 590 / 92 events（用户实测截图） |
-| 真实 DeepSeek 保存+注入 | 见 docs/real-deepseek-runbook.md 的 G1-G4（发布时附截图） |
+| `npm run verify` (typecheck / lint / arch red-line scan / tests / build) | 248 passed + 6 skipped over 32 files |
+| Real-model suite (`ACTOR_E2E=1`) | 9 passed: 1 live Actor CLI summary, 5 memory-quality assertions, 3 protocol cases |
+| Local real-browser E2E | 9-step main loop PASS, including the injection order "memory → persona → original" |
+| Real DeepSeek capture | xhr, answer 673 chars, thinking 590 chars, 92 events (user-captured screenshot) |
 
-## 已知边界
+The repository's `main` has since moved to **430 tests** and the v0.2 features listed below.
 
-- 只覆盖 DeepSeek 的一个页面版本；页面改版会让抓流失效（可用性问题，不是安全问题）。
-- 记忆总结依赖本机 Ollama + qwen2.5:3b；3B 可能丢细节，保存前必须人工看预览。
-- 自动总结触发、滚动合并、embedding 检索、对话 UI、多站点、DOM 全量操控都不在本版。
-- 单用户、手动触发；没有遥测，也没有云端中转。
+## Install
 
-## 安装（摘要）
-
-~~~powershell
+```powershell
 npm ci
 npm run verify
-npm run build            # -> dist/
-scripts\autostart.ps1    # 或手动 node dist/actor-cli.js
-~~~
+npm run build              # -> dist/
+scripts\autostart.ps1      # or: node dist/actor-cli.js
+```
 
-1. chrome://extensions 开发者模式加载 dist/；
-2. autostart 拉起 Ollama + Actor，token 在 %LOCALAPPDATA%\WebOSAgent\token.txt；
-3. 打开 chat.deepseek.com（用你自己的账号），侧边栏粘贴 token 连接。
+1. Open `chrome://extensions`, enable Developer mode, load `dist/`.
+2. `autostart.ps1` starts Ollama + the Actor; the token is generated at `%LOCALAPPDATA%\WebOSAgent\token.txt`.
+3. Open `https://chat.deepseek.com` with **your own** account and paste the token into the side panel.
 
-## 下一步
+## Known limitations
 
-补齐真实 DeepSeek 的 G1-G4 证据 → 5 分钟 demo → 博客与面试包 → ESP32 最小终端。
+- One page version of one site (DeepSeek). A redesign breaks capture — a usability issue, not a security one.
+- Memory summarization needs a local Ollama with `qwen2.5:3b`; 3B models lose detail, so the preview must be reviewed before saving.
+- Not in this release: auto-summary, rolling merge, embedding retrieval, a conversation UI, multi-site support, model-driven page actions.
+- Single user, manual trigger. No telemetry, no cloud relay.
+
+## Next (on `main`, unreleased)
+
+- SQLite memory (`~/.webos-agent/memory.db`) with automatic import of the legacy `memory.json`.
+- PageAct: a declarative action DSL with explicit confirmation for dangerous actions.
+- The artifacts canvas: React/JSX rendering with `webos.report()` flowing back into the next turn.
+- Real-DeepSeek evidence run (G1–G4) — checklist in [`docs/real-deepseek-runbook.md`](https://github.com/BOHAOYUAN/WEB-Agent-OS/blob/main/docs/real-deepseek-runbook.md).
+
+## License
+
+MIT.
+
+---
+
+**中文摘要**
+
+Web-OS-Agent 的第一个公开版本。把 DeepSeek 网页端变成 Agent 运行时：只读观察你自己发出的请求、本地模型总结记忆、模型产出在 opaque-origin 沙箱里渲染。不碰账号与凭证，不经过云端。v0.2 的 SQLite 记忆、PageAct 与画布已在 main 上，随后发布。
