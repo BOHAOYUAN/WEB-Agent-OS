@@ -91,7 +91,7 @@ The side panel is the only UI: a **console** (memory loop, PageAct console, arti
 
 ```bash
 npm ci
-npm run verify     # typecheck + lint + arch red-line scan + 430 tests + build
+npm run verify     # typecheck + lint + arch red-line scan + 446 tests + build
 npm run build      # → dist/
 ```
 
