@@ -1,44 +1,49 @@
 # Contributing
 
-## 代码来源纪律（硬性）
+Thanks for helping. Two things matter more than anything else here: **provenance** and **the red lines**.
 
-- **禁止**整段复制第三方项目代码、注释、文件结构。
-- 允许阅读公开文档/协议描述，提取**协议事实**，然后从零实现并写自己的测试。
-- 任何借鉴都要在 PR 描述里写清楚：来源、借鉴的是"事实/思路"还是代码；代码必须兼容本项目 MIT。
-- 协议笔记放 `docs/protocol-deepseek.md`，标注日期与来源。
+## Provenance (hard rule)
 
-## 开发
+- Do **not** copy whole blocks of third-party code, comments, or file structure.
+- Reading public documentation and extracting **protocol facts** is fine; implement from scratch and write your own tests.
+- Any inspiration must be stated in the PR: the source, and whether you took a fact/idea or code. Code must be MIT-compatible.
+- Protocol notes go to `docs/protocol-deepseek.md`, with date and source.
+
+## Development
 
 ```bash
 npm ci
-npm run verify
+npm run verify      # typecheck + lint + arch red-line scan + tests + build
+npm run demo        # local SSE + PageAct fixtures on :4318
 ```
 
-- 每个包只依赖 `@webos/shared`（apps 除外）；`npm run arch` 会拦截越界依赖和红线字符串。
-- 新协议帧先加 fixture，再改归一化；测试必须覆盖任意 chunk 切分。
-- 提交信息用 `feat:` / `fix:` / `docs:` / `test:` / `chore:`。
+- `packages/shared` is the only cross-package contract. `npm run arch` enforces the boundaries and scans for red-line strings.
+- New protocol frames: add a fixture first, then change normalization. Tests must cover arbitrary chunk splits.
+- Commit messages use `feat:` / `fix:` / `docs:` / `test:` / `chore:`.
 
-## 红线
+## Red lines
 
-见 README。涉及凭证、登录、PoW、请求重放的 PR 一律拒绝。
+See [README](README.md). PRs touching credentials, login, PoW, or request replay are rejected.
 
-## 跑真实模型 E2E（可选）
+## Real-model E2E (optional)
 
-默认 `npm run verify` 会跳过 6 条真实模型用例（慢、依赖本机 Ollama）。需要本机 `ollama serve` 且已 `ollama pull qwen2.5:3b`：
+`npm run verify` skips the 6 real-model cases (slow, needs a local Ollama). With `ollama serve` and `ollama pull qwen2.5:3b`:
 
-~~~powershell
+```powershell
 $env:ACTOR_E2E='1'
 npx vitest run packages/actor/test/cli-smoke.test.ts packages/actor/test/memory-quality.test.ts
-~~~
+```
 
-预期 9 passed、约 8–10 秒。改摘要 prompt 或 `normalizeSummary` 之前，先让这 9 条通过。
+Expected: 9 passed, about 8–10 s. Get these green before touching the summary prompt or `normalizeSummary`.
 
-## 文档地图
+## Docs map
 
-| 想了解 | 看 |
+| Want | Read |
 | --- | --- |
-| 整体架构与四层边界 | docs/architecture.md |
-| 真实页面验收（需要本人登录） | docs/real-deepseek-runbook.md |
-| 记忆闭环逐段讲解 | docs/ownership-audit.md |
-| 发布前检查 | docs/prepublish-checklist.md |
-| 威胁模型 | docs/threat-model.md |
+| Architecture and layer boundaries | [docs/architecture.md](docs/architecture.md) |
+| Real-page acceptance (your own login) | [docs/real-deepseek-runbook.md](docs/real-deepseek-runbook.md) |
+| Memory loop walkthrough | [docs/ownership-audit.md](docs/ownership-audit.md) |
+| Pre-release checks | [docs/prepublish-checklist.md](docs/prepublish-checklist.md) |
+| Threat model | [docs/threat-model.md](docs/threat-model.md) |
+| V2 plan | [docs/v2-architecture-plan.md](docs/v2-architecture-plan.md) |
+| PageAct manual test plan | [docs/pageact-test-plan.md](docs/pageact-test-plan.md) |

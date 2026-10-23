@@ -1,25 +1,26 @@
 # Security
 
-## 报告问题
+## Reporting
 
-用 GitHub 的 [Private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)（仓库 Security 标签页 → Report a vulnerability）。
+Use GitHub's [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) (Security tab → Report a vulnerability).
 
-不要在公开 issue 里贴真实 Cookie、Token、对话内容、原始帧或截图。收到的报告会在 7 天内先确认、再修复。
+Never post real cookies, tokens, transcripts, raw frames, or screenshots in a public issue. Reports are acknowledged within 7 days.
 
-## 设计约束（为什么这层能公开）
+## Design constraints (why this can be public)
 
-- **只读抓流**：不读 Cookie / `Authorization` / `x-hif-*` / `x-ds-pow-response`；扩展自身不发起网络请求，没有遥测、没有远程配置。
-- **注入只改请求体**：只在下一轮 completion 的 `prompt` 前加一个「记忆 → 人设」前缀，一次注入只消费一次，失败不留残渣。
-- **沙箱渲染**：模型输出的 HTML/SVG 跑在 manifest sandbox 页的嵌套 iframe 里，`sandbox="allow-scripts"` 且永不 `allow-same-origin`；CSP `default-src 'none'` / `connect-src 'none'`，模型输出无法外传。
-- **本地回环**：Actor 只监听 127.0.0.1，token 由使用机器本地生成，Origin 白名单限定扩展 ID。
-- **原文不落盘**：只把结构化摘要写入 `~/.webos-agent/memory.json`（原子写、上限 100 条 / 1MB），transcript 只活在内存 ring buffer；原始帧导出仅开发构建可用。
+- **Read-only capture** — no cookies, `Authorization`, `x-hif-*` or `x-ds-pow-response`; the extension makes no network requests of its own; no telemetry, no remote config.
+- **Injection only edits the request body** — a single "memory → persona" prefix on the next completion, consumed once; a failure leaves nothing behind.
+- **Sandboxed rendering** — model-generated HTML/SVG/JSX runs in a nested iframe inside the manifest sandbox page (`sandbox="allow-scripts"`, never `allow-same-origin`) under `default-src 'none'` / `connect-src 'none'`.
+- **Local loopback** — the Actor listens on `127.0.0.1` only; the token is generated on your machine; the Origin allowlist pins the extension id.
+- **Transcript never persisted** — only structured summaries are stored, in `~/.webos-agent/memory.db` (SQLite, bounded); the transcript lives in an in-memory ring buffer. Raw-frame export is dev-only.
+- **Page actions are declarative and confirmed** — a fixed action DSL, validated twice; dangerous actions (download / submit / credential / destructive) require explicit user confirmation, and no UI means refusal.
 
-## 已知边界（不是漏洞）
+## Known boundaries (not vulnerabilities)
 
-- MAIN world 与页面共享 JS 上下文，nonce 对同源脚本可见；Step 1 的事件不触发特权动作。
-- 页面改版可能导致抓流失效——这是可用性问题，不是安全问题，记录 transport 变化即可。
-- 单用户、手动触发：不做多账号、不做云端中转、不做绕过站点检测。
+- MAIN world shares the page's JS context, so the nonce is visible to same-origin scripts; captured events never trigger privileged actions.
+- A page redesign can break capture — usability, not security; record the transport change.
+- Single user, manual trigger: no multi-account, no cloud relay, no detection evasion.
 
-## 不在范围内
+## Out of scope
 
-账号安全、站点风控对抗、PoW 求解、请求重放、代理/反代方案。
+Account security, bot-detection evasion, PoW solving, request replay, proxy/relay schemes.

@@ -9,7 +9,7 @@ No cloud. No relay. No account. The model, the memory, and the execution loop st
 <p>
   <img alt="version" src="https://img.shields.io/badge/version-v0.2.0--dev-green">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue">
-  <img alt="tests" src="https://img.shields.io/badge/tests-430%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-446%20passing-brightgreen">
   <a href="https://github.com/BOHAOYUAN/WEB-Agent-OS/actions/workflows/verify.yml"><img alt="CI" src="https://github.com/BOHAOYUAN/WEB-Agent-OS/actions/workflows/verify.yml/badge.svg"></a>
 </p>
 
@@ -119,7 +119,7 @@ docs/               architecture, threat model, roadmap, runbooks
 
 ## Status
 
-- **430 unit/integration tests** (+6 opt-in real-model tests with `ACTOR_E2E=1`), typecheck, lint, arch red-line scan and build all run in CI on every push.
+- **446 unit/integration tests** (+6 opt-in real-model tests with `ACTOR_E2E=1`), typecheck, lint, arch red-line scan and build all run in CI on every push.
 - `v0.1.0` is tagged. `v0.2.0` is in progress: SQLite memory, PageAct (beta), the artifacts canvas, and a re-measured Brain plan.
 - **Honest gaps:** only the current DeepSeek page version is supported; PageAct is driven from a JSON console (no model planner yet); auto-summary, memory retrieval and site adapters are not shipped; there is no visual/screenshot-based CUA, and there will not be.
 
