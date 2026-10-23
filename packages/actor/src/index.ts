@@ -19,4 +19,7 @@ export * from "./security/command-policy.js";
 export * from "./exec/runner.js";
 export * from "./memory/summarize.js";
 export * from "./memory/store.js";
+export * from "./memory/sqlite-store.js";
+export * from "./memory/types.js";
+export * from "./memory/migrate.js";
 export * from "./memory/builtin.js";

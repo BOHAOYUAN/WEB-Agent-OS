@@ -7,7 +7,7 @@
 import { ACTOR_PROTOCOL_VERSION } from "@webos/shared";
 import type { ActorCommand, ActorResult } from "@webos/shared";
 import { summarizeTranscript } from "./summarize.js";
-import { MemoryStore } from "./store.js";
+import type { MemoryStoreLike } from "./types.js";
 
 export interface SummarizeConfig {
   endpoint?: string;
@@ -41,7 +41,7 @@ export async function handleMemorySummary(
 
 export async function handleMemoryStore(
   command: Extract<ActorCommand, { kind: "memory-store" }>,
-  store: MemoryStore,
+  store: MemoryStoreLike,
 ): Promise<ActorResult> {
   try {
     if (command.action === "save") {

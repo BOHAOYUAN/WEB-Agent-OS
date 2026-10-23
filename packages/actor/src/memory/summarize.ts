@@ -21,7 +21,11 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
 /** Second defense-in-depth cap on the transcript embedded in the prompt. */
 export const MAX_PROMPT_CHARS = 16 * 1024;
 
-const SYSTEM_PROMPT = [
+/**
+ * Exported so the V2 model A/B gate (`scripts/brain-ab/`) can run candidates
+ * through the EXACT production prompt instead of a copy that would drift.
+ */
+export const SYSTEM_PROMPT = [
   "你是一个长期记忆压缩器，服务于一个 AI Agent。",
   "你的任务是把对话压缩成严格 JSON，只保留对后续对话真正有用的信息。",
   "不要编造。不确定的内容放进 open_loops，不要放进 facts。",
@@ -81,7 +85,7 @@ export function buildPrompt(transcript: string): string {
     "字段规则：",
     "- facts：最多 5 条，只放已经发生且对话明确确认的事实；每条不超过 40 个汉字。",
     "- preferences：最多 3 条，用户的稳定偏好或约束；每条不超过 40 个汉字。",
-    "- decisions：最多 3 条，已经拍板的决策；每条不超过 40 个汉字。",
+    "- decisions：最多 3 条，只放已经拍板的技术方案或路线选择（例如「用 A 不用 B」）；截止日期、要交的东西、要做的动作都不是决策；每条不超过 40 个汉字。",
     "- open_loops：最多 3 条，未完成/计划中/待验证/有风险的事项；每条不超过 40 个汉字。",
     "- summary：不超过 120 个汉字，概括这段对话对后续最有用的内容。",
     "所有数组只能包含字符串。没有内容就给空数组。只输出 JSON。",
@@ -90,6 +94,7 @@ export function buildPrompt(transcript: string): string {
     '- 对话里说「下一步做 Stage 2」→ 这是计划，必须放 open_loops，绝不能放 facts。',
     '- 对话里说「Stage 1 已完成并通过验证」→ 这是已确认事实，放 facts。',
     '- 对话里说「等有空再验证这个 bug」→ 待办，放 open_loops。',
+    '- 对话里说「下周要交答辩录屏，别忘了」→ 带截止日期的待办，放 open_loops，绝不能放 decisions。',
     '- 对话里说「我更喜欢简洁的回复」→ 稳定偏好，放 preferences。',
     "",
     "对话：",
@@ -97,14 +102,33 @@ export function buildPrompt(transcript: string): string {
   ].join("\n");
 }
 
-function asStringArray(value: unknown, limit: number): string[] {
+/**
+ * Length contract, mirroring the prompt. Exported so the A/B gate measures
+ * against the same numbers instead of hard-coding its own.
+ *
+ * Measured at 2026-10-23: a 1.5B model overflows the 40-char limit on 43% of
+ * facts (3B: 4%), so the limit is enforced here rather than trusted from the
+ * prompt.
+ */
+export const MAX_FACT_CHARS = 40;
+export const MAX_SUMMARY_CHARS = 120;
+/** Anti-explosion ceiling applied before the length contract is checked. */
+const HARD_CAP_CHARS = 240;
+
+/**
+ * Coerce to a trimmed string array, then DROP entries that overflow the
+ * length contract. Truncating would be worse than dropping: a fact sliced
+ * mid-sentence is a fragment that reads as evidence to the next turn.
+ */
+function asStringArray(value: unknown, limit: number, maxChars: number): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, limit)
-    .map((item) => item.slice(0, 80));
+    .map((item) => item.slice(0, HARD_CAP_CHARS))
+    .filter((item) => item.length <= maxChars);
 }
 
 /**
@@ -147,11 +171,11 @@ export function normalizeSummary(parsed: unknown): MemorySummary {
   }
   const record = parsed as Record<string, unknown>;
   return enforceFactsBoundary({
-    facts: asStringArray(record.facts, 5),
-    preferences: asStringArray(record.preferences, 3),
-    decisions: asStringArray(record.decisions, 3),
-    open_loops: asStringArray(record.open_loops, 3),
-    summary: typeof record.summary === "string" ? record.summary.trim().slice(0, 200) : "",
+    facts: asStringArray(record.facts, 5, MAX_FACT_CHARS),
+    preferences: asStringArray(record.preferences, 3, MAX_FACT_CHARS),
+    decisions: asStringArray(record.decisions, 3, MAX_FACT_CHARS),
+    open_loops: asStringArray(record.open_loops, 3, MAX_FACT_CHARS),
+    summary: typeof record.summary === "string" ? record.summary.trim().slice(0, MAX_SUMMARY_CHARS) : "",
   });
 }
 

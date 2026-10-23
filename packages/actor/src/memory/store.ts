@@ -29,7 +29,7 @@ export interface MemoryStoreOptions {
   path?: string;
 }
 
-interface RawLoadResult {
+export interface RawLoadResult {
   snapshot: MemoryStoreSnapshot;
   corrupt: boolean;
 }
@@ -53,6 +53,16 @@ export class MemoryStore {
   async load(): Promise<MemoryStoreSnapshot> {
     const { snapshot } = await this.readRaw();
     return snapshot;
+  }
+
+  /**
+   * Load plus the corrupt flag. `load()` deliberately hides corruption (a
+   * broken store must not crash the Agent), but a migration MUST be able to
+   * tell "no entries" apart from "unreadable file" — otherwise a corrupt
+   * source is silently reported as a successful no-op migration.
+   */
+  async loadWithStatus(): Promise<RawLoadResult> {
+    return this.readRaw();
   }
 
   /** Append a new entry (newest first), then atomically persist. */

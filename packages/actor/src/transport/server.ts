@@ -25,9 +25,13 @@ import { encodeFrame, FrameDecoder } from "./frame.js";
 import { Heartbeat } from "./heartbeat.js";
 import { ReusableToken } from "../security/token.js";
 import { evaluateCommand } from "../security/command-policy.js";
+import { AuditLog, DEFAULT_AUDIT_CAPACITY } from "../security/audit-log.js";
+import { RateLimiter, type RateLimiterOptions } from "../security/rate-limit.js";
 import { executeCommand, type ExecutionOptions } from "../exec/runner.js";
 import { handleMemoryStore, handleMemorySummary, type SummarizeConfig } from "../memory/builtin.js";
-import { MemoryStore } from "../memory/store.js";
+import { MemoryStore, DEFAULT_MEMORY_PATH } from "../memory/store.js";
+import { SqliteMemoryStore, DEFAULT_SQLITE_PATH } from "../memory/sqlite-store.js";
+import type { MemoryBackend, MemoryStoreLike } from "../memory/types.js";
 
 export type { SummarizeConfig } from "../memory/builtin.js";
 
@@ -44,10 +48,16 @@ export interface ActorServerOptions {
   exec?: Partial<ExecutionOptions>;
   /** Local Ollama config for the memory-summary builtin. */
   ollama?: SummarizeConfig;
-  /** Override the on-disk memory store path (defaults to ~/.webos-agent/memory.json). */
+  /** Which on-disk backend to use. SQLite is the default; JSON is the legacy path. */
+  memoryBackend?: MemoryBackend;
+  /** Override the store path (defaults per backend: memory.db / memory.json). */
   memoryPath?: string;
   /** Heartbeat tuning. */
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
+  /** Audit trail capacity (records kept in memory). */
+  auditCapacity?: number;
+  /** Per-connection command rate limit. */
+  rateLimit?: RateLimiterOptions;
   /** Command handler override (for tests). Defaults to local execution. */
   onCommand?: (command: ActorCommand) => Promise<ActorResult>;
   /** Log sink (defaults to console.debug when __DEV__). */
@@ -85,9 +95,21 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
   const reusable = new ReusableToken(options.token);
   const exec: ExecutionOptions = { ...DEFAULT_EXEC, ...options.exec };
   const log = options.log ?? (() => undefined);
-  const store = new MemoryStore({ path: options.memoryPath });
+  const backend: MemoryBackend = options.memoryBackend ?? "sqlite";
+  const store: MemoryStoreLike =
+    backend === "json"
+      ? new MemoryStore({ path: options.memoryPath ?? DEFAULT_MEMORY_PATH })
+      : new SqliteMemoryStore({ path: options.memoryPath ?? DEFAULT_SQLITE_PATH });
 
   const connections = new Set<LiveConnection>();
+
+  // One audit trail for the whole bridge: a reviewer wants the sequence of
+  // decisions across connections, not per-socket fragments. Every record is
+  // redacted before it is stored, and mirrored to the log sink.
+  const audit = new AuditLog({
+    capacity: options.auditCapacity ?? DEFAULT_AUDIT_CAPACITY,
+    onRecord: (record) => log(`[audit] ${record.event} ${record.detail}`.trimEnd()),
+  });
 
   const server = createServer();
 
@@ -125,6 +147,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     );
 
     if (!handshake.ok) {
+      audit.record("handshake-denied", handshake.reason ?? "handshake rejected");
       socket.write(
         `HTTP/1.1 ${handshake.status ?? 403} Forbidden\r\nConnection: close\r\n\r\n`,
       );
@@ -137,6 +160,9 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     const url = new URL(request.url ?? "/", "http://localhost");
     const candidate = url.searchParams.get("token") ?? request.headers["x-webos-token"];
     if (typeof candidate !== "string" || !reusable.verify(candidate)) {
+      // The candidate value is NEVER recorded — only the fact that it failed.
+      // The token is reusable, so writing it anywhere would hand out the bridge.
+      audit.record("token-denied", "reusable token rejected");
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
@@ -157,6 +183,8 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     const connection = attachConnection(socket, {
       exec,
       log,
+      audit,
+      limiter: new RateLimiter(options.rateLimit),
       ollama: options.ollama,
       store,
       onCommand: options.onCommand,
@@ -166,6 +194,7 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
     socket.on("close", () => {
       connection.heartbeat.stop();
       connections.delete(connection);
+      audit.record("connection-closed");
     });
   });
 
@@ -187,6 +216,9 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
       }
       connections.clear();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      // Release the database handle last: on Windows an open handle keeps
+      // memory.db locked after the listener is already down.
+      store.close?.();
     },
   };
 }
@@ -194,8 +226,11 @@ export async function createActorServer(options: ActorServerOptions): Promise<Ac
 interface AttachOptions {
   exec: ExecutionOptions;
   log: (line: string) => void;
+  audit: AuditLog;
+  /** One limiter per connection — a client cannot spend another's budget. */
+  limiter: RateLimiter;
   ollama?: SummarizeConfig;
-  store: MemoryStore;
+  store: MemoryStoreLike;
   onCommand?: (command: ActorCommand) => Promise<ActorResult>;
   heartbeat?: { intervalMs?: number; timeoutMs?: number };
 }
@@ -246,10 +281,33 @@ async function handleMessage(
   socket: Socket,
   options: AttachOptions,
 ): Promise<void> {
+  // Rate limit FIRST — before parsing, before validation. A flooded socket
+  // must never reach the command path.
+  if (!options.limiter.tryConsume()) {
+    options.audit.record(
+      "rate-limited",
+      `command refused (violation ${options.limiter.violationCount})`,
+    );
+    sendResult(socket, {
+      v: ACTOR_PROTOCOL_VERSION,
+      id: "",
+      ok: false,
+      code: "rate-limited",
+      message: "rate limit exceeded",
+    });
+    // A client that keeps pushing after being refused is not a slow client.
+    if (options.limiter.shouldDrop()) {
+      options.audit.record("connection-closed", "dropped after repeated rate-limit violations");
+      socket.destroy();
+    }
+    return;
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(data.toString("utf8"));
   } catch {
+    options.audit.record("malformed-frame", "invalid JSON");
     sendResult(socket, { v: ACTOR_PROTOCOL_VERSION, id: "", ok: false, code: "denied", message: "malformed JSON" });
     return;
   }
@@ -257,6 +315,7 @@ async function handleMessage(
   const validation = validateActorCommand(parsed);
   if (!validation.ok) {
     const id = isRecord(parsed) && typeof parsed.id === "string" ? parsed.id : "";
+    options.audit.record("command-denied", validation.reason);
     sendResult(socket, { v: ACTOR_PROTOCOL_VERSION, id, ok: false, code: "denied", message: validation.reason });
     return;
   }
@@ -266,7 +325,16 @@ async function handleMessage(
   if (options.onCommand) {
     result = await options.onCommand(command);
   } else {
-    result = await defaultCommandHandler(command, options.exec, options.ollama, options.store);
+    result = await defaultCommandHandler(command, options.exec, options.ollama, options.store, options.audit);
+  }
+
+  // Exactly one record per command: the decision lives with the decision.
+  if (result.ok) {
+    options.audit.record("command-ok", command.kind);
+  } else if (result.code === "denied") {
+    options.audit.record("command-denied", result.message);
+  } else {
+    options.audit.record("command-failed", `${result.code}: ${result.message}`);
   }
   sendResult(socket, result);
 }
@@ -275,13 +343,25 @@ async function defaultCommandHandler(
   command: ActorCommand,
   exec: ExecutionOptions,
   ollama?: SummarizeConfig,
-  store?: MemoryStore,
+  store?: MemoryStoreLike,
+  audit?: AuditLog,
 ): Promise<ActorResult> {
   if (command.kind === "memory-summary") {
     return handleMemorySummary(command, ollama);
   }
   if (command.kind === "memory-store") {
     return handleMemoryStore(command, store ?? new MemoryStore());
+  }
+  if (command.kind === "audit-dump") {
+    // Read-only: the trail is already redacted, so exporting it cannot leak
+    // the token or a command line.
+    return {
+      v: ACTOR_PROTOCOL_VERSION,
+      id: command.id,
+      ok: true,
+      kind: "audit-dump",
+      records: audit?.list() ?? [],
+    };
   }
   return handleExec(command, exec);
 }
